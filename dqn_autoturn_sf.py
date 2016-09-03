@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import json
 import socket
+import itertools
 
 import numpy as np
 
@@ -29,6 +30,7 @@ class AutoturnSF_Env(gym.Env):
     def __init__(self, sid):
         self.sid = sid
 
+        self.historylen = 8
         self._seed()
 
         self.s = None
@@ -44,8 +46,9 @@ class AutoturnSF_Env(gym.Env):
         3: THRUSTSHOOT - thrust_down, thrust_shoot
         """
         self.action_space = spaces.Discrete(4)
-        high = np.array([np.inf]*11)
+        high = np.array([np.inf]*13*self.historylen)
         self.observation_space = spaces.Box(-high, high)
+        self.state = []
 
     def __send_command(self, cmd, *args, **kwargs):
         out = {"command": cmd}
@@ -69,7 +72,9 @@ class AutoturnSF_Env(gym.Env):
             world["fortress"]["alive"],
             world["vlner"],
             len(world["missiles"])>0,
-            len(world["shells"])>0
+            len(world["shells"])>0,
+            self.thrusting,
+            self.shooting
         ]))
 
     def _seed(self, seed=None):
@@ -98,7 +103,8 @@ class AutoturnSF_Env(gym.Env):
         self.sf = self.s.makefile()
         self.config = json.loads(self.sf.readline())
         self.config = self.__send_command("id", self.sid, ret=True)
-        return self.__make_state(self.__send_command("continue", ret=True))
+        self.state = [self.__make_state(self.__send_command("continue", ret=True))] * self.historylen
+        return list(itertools.chain.from_iterable(self.state))
 
     def _render(self, mode='human', close=False):
         return True
@@ -140,10 +146,10 @@ class AutoturnSF_Env(gym.Env):
                 self.score = 0
         reward = world["raw_pnts"] - self.score
         self.score = world["raw_pnts"]
-        state = self.__make_state(world)
-        #print(state)
+        self.state.pop(0)
+        self.state.append(self.__make_state(world))
         done = False
-        return np.array(state), reward, done, {}
+        return np.array(list(itertools.chain.from_iterable(self.state))), reward, done, {}
 
 if __name__ == '__main__':
 
@@ -182,4 +188,4 @@ if __name__ == '__main__':
     dqn.save_weights('dqn_autoturn_sf_weights.h5f', overwrite=True)
 
     # Finally, evaluate our algorithm for 5 episodes.
-    dqn.test(env, nb_episodes=5, visualize=True)
+    #dqn.test(env, nb_episodes=5, visualize=True)
