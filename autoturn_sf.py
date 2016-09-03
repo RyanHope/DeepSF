@@ -50,22 +50,25 @@ class AutoturnSF_Env(gym.Env):
         if "ret" in kwargs and kwargs["ret"]:
             return json.loads(self.sf.readline())
 
-    def __make_state(self, world):
-        return list(map(float, [
-            world["ship"]["alive"],
-            world["ship"]["x"],
-            world["ship"]["y"],
-            world["ship"]["vx"],
-            world["ship"]["vy"],
-            world["ship"]["vdir"],
-            world["ship"]["distance-from-fortress"],
-            world["fortress"]["alive"],
-            world["vlner"],
-            len(world["missiles"])>0,
-            len(world["shells"])>0,
-            self.thrusting,
-            self.shooting
-        ]))
+    def __make_state(self, world, done):
+        ret = [0.0] * 13
+        if not done:
+            ret = list(map(float, [
+                world["ship"]["alive"],
+                world["ship"]["x"],
+                world["ship"]["y"],
+                world["ship"]["vx"],
+                world["ship"]["vy"],
+                world["ship"]["vdir"],
+                world["ship"]["distance-from-fortress"],
+                world["fortress"]["alive"],
+                world["vlner"],
+                len(world["missiles"])>0,
+                len(world["shells"])>0,
+                self.thrusting,
+                self.shooting
+            ]))
+        return ret
 
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -93,13 +96,15 @@ class AutoturnSF_Env(gym.Env):
         self.sf = self.s.makefile()
         self.config = json.loads(self.sf.readline())
         self.config = self.__send_command("id", self.sid, ret=True)
-        self.state = [self.__make_state(self.__send_command("continue", ret=True))] * self.historylen
+        self.state = [self.__make_state(self.__send_command("continue", ret=True), False)] * self.historylen
         return list(itertools.chain.from_iterable(self.state))
 
     def _render(self, mode='human', close=False):
         return True
 
     def _step(self, action):
+        done = False
+        reward = 0
         if action == 0:
             if self.thrusting:
                 self.__send_command("keyup", "thrust")
@@ -128,15 +133,12 @@ class AutoturnSF_Env(gym.Env):
             if not self.shooting:
                 self.__send_command("keydown", "fire")
                 self.shooting = True
-        while True:
-            world = self.__send_command("continue", ret=True)
-            if "pnts" in world:
-                break
-            else:
-                self.score = 0
-        reward = world["raw_pnts"] - self.score
-        self.score = world["raw_pnts"]
+        world = self.__send_command("continue", ret=True)
+        if "raw_pnts" in world:
+            reward = world["raw_pnts"] - self.score
+            self.score = world["raw_pnts"]
+        else:
+            done = True
         self.state.pop(0)
-        self.state.append(self.__make_state(world))
-        done = False
+        self.state.append(self.__make_state(world, done))
         return np.array(list(itertools.chain.from_iterable(self.state))), reward, done, {}
