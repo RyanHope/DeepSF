@@ -3,6 +3,7 @@ from __future__ import print_function
 import json
 import socket
 import itertools
+import time
 
 import numpy as np
 
@@ -13,20 +14,17 @@ from gym.utils import seeding
 class AutoturnSF_Env(gym.Env):
 
     metadata = {
-        'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second' : 33
+        'render.modes': ['human'],
+        'video.frames_per_second' : 30
     }
 
     def __init__(self, sid):
         self.sid = sid
 
-        self.historylen = 8
         self._seed()
 
         self.s = None
         self.sf = None
-
-        self._reset()
 
         """
         Discrete actions:
@@ -35,9 +33,16 @@ class AutoturnSF_Env(gym.Env):
         2: SHOOT - thrust_up, shoot_down
         3: THRUSTSHOOT - thrust_down, thrust_shoot
         """
+        self.historylen = 8
+        self.num_features = 10
         self.action_space = spaces.Discrete(4)
-        high = np.array([np.inf]*13*self.historylen)
-        self.observation_space = spaces.Box(-high, high)
+        low = [0] * self.num_features
+        high = [1, 360, 360, 200, 1, 100, 20, 20, 1, 1]
+        low = np.array(low * self.historylen)
+        high = np.array(high * self.historylen)
+        self.observation_space = spaces.Box(low, high)
+        # high = np.array([np.inf]*self.num_features*self.historylen)
+        # self.observation_space = spaces.Box(-high, high)
         self.state = []
 
     def __send_command(self, cmd, *args, **kwargs):
@@ -51,20 +56,17 @@ class AutoturnSF_Env(gym.Env):
             return json.loads(self.sf.readline())
 
     def __make_state(self, world, done):
-        ret = [0.0] * 13
+        ret = [0.0] * self.num_features
         if not done:
             ret = list(map(float, [
                 world["ship"]["alive"],
-                world["ship"]["x"],
-                world["ship"]["y"],
-                world["ship"]["vx"],
-                world["ship"]["vy"],
+                world["ship"]["orientation"],
                 world["ship"]["vdir"],
                 world["ship"]["distance-from-fortress"],
                 world["fortress"]["alive"],
                 world["vlner"],
-                len(world["missiles"])>0,
-                len(world["shells"])>0,
+                len(world["missiles"]),
+                len(world["shells"]),
                 self.thrusting,
                 self.shooting
             ]))
@@ -88,6 +90,12 @@ class AutoturnSF_Env(gym.Env):
         self.thrusting = False
         self.shooting = False
         self.score = 0
+        self.maxscore = 0
+        self.outer_deaths = 0
+        self.inner_deaths = 0
+        self.fortress_kills = 0
+        self.resets = 0
+        self.world = {}
 
     def _reset(self):
         self._destroy()
@@ -96,7 +104,9 @@ class AutoturnSF_Env(gym.Env):
         self.sf = self.s.makefile()
         self.config = json.loads(self.sf.readline())
         self.config = self.__send_command("id", self.sid, ret=True)
-        self.state = [self.__make_state(self.__send_command("continue", ret=True), False)] * self.historylen
+        self.world = self.__send_command("continue", ret=True)
+        self.state = [self.__make_state(self.world, False)] * self.historylen
+        self.last_death = time.time()
         return list(itertools.chain.from_iterable(self.state))
 
     def _render(self, mode='human', close=False):
@@ -105,40 +115,63 @@ class AutoturnSF_Env(gym.Env):
     def _step(self, action):
         done = False
         reward = 0
+        thrusting = self.thrusting
+        shooting = self.shooting
         if action == 0:
             if self.thrusting:
                 self.__send_command("keyup", "thrust")
-                self.thrusting = False
+                thrusting = False
             if self.shooting:
                 self.__send_command("keyup", "fire")
-                self.shooting = False
+                shooting = False
         elif action == 1:
             if not self.thrusting:
                 self.__send_command("keydown", "thrust")
-                self.thrusting = True
+                thrusting = True
             if self.shooting:
                 self.__send_command("keyup", "fire")
-                self.shooting = False
+                shooting = False
         elif action == 2:
             if self.thrusting:
                 self.__send_command("keyup", "thrust")
-                self.thrusting = False
+                thrusting = False
             if not self.shooting:
                 self.__send_command("keydown", "fire")
-                self.shooting = True
+                shooting = True
         elif action == 3:
             if not self.thrusting:
                 self.__send_command("keydown", "thrust")
-                self.thrusting = True
+                thrusting = True
             if not self.shooting:
                 self.__send_command("keydown", "fire")
-                self.shooting = True
+                shooting = True
         world = self.__send_command("continue", ret=True)
+        reward = 0
         if "raw_pnts" in world:
-            reward = world["raw_pnts"] - self.score
+            now = time.time()
+            reward += world["raw_pnts"] - self.score
+            if not world["ship"]["alive"] and self.world["ship"]["alive"] and "big-hex" in world["collisions"]:
+                self.outer_deaths += 1
+            if not world["ship"]["alive"] and self.world["ship"]["alive"] and "small-hex" in world["collisions"]:
+                self.inner_deaths += 1
+            if "fortress" in world["collisions"] and not "fortress" in self.world["collisions"]:
+                reward += min(world["vlner"],10)**2
+            if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
+                self.fortress_kills += 1
+                reward += 1000
+            if world["vlner"] == 0 and self.world["vlner"] > 0 and world["fortress"]["alive"]:
+                self.resets += 1
+                reward -= self.world["vlner"]
+            if shooting and not self.shooting:
+                reward += 2
             self.score = world["raw_pnts"]
+            if world["pnts"] > self.maxscore:
+                self.maxscore = world["pnts"]
         else:
             done = True
+        self.world = world
+        self.shooting = shooting
+        self.thrusting = thrusting
         self.state.pop(0)
         self.state.append(self.__make_state(world, done))
         return np.array(list(itertools.chain.from_iterable(self.state))), reward, done, {}
