@@ -21,7 +21,6 @@ import warnings
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Flatten
 from keras.optimizers import Adam
-from keras.utils.visualize_util import plot
 
 from rl.agents.dqn import DQNAgent
 from rl.policy import BoltzmannQPolicy, EpsGreedyQPolicy
@@ -132,7 +131,8 @@ def main(args):
     model.add(Activation('relu'))
     model.add(Dense(nb_actions))
     model.add(Activation('linear'))
-    if args.mode == "plot":
+    if args.mode[0] == "plot":
+        from keras.utils.visualize_util import plot
         plot(model, to_file='dqn_autoturn_sf_model.png', show_shapes=True)
         sys.exit(1)
     print(model.summary())
@@ -151,10 +151,10 @@ def main(args):
     if os.path.isfile('dqn_autoturn_sf_weights.h5f'):
         dqn.load_weights('dqn_autoturn_sf_weights.h5f')
 
-    if args.mode == "train":
+    if args.mode[0] == "train":
         log = TrainEpisodeFileLogger(env, dqn, "dqn_autoturn_sf_log.tsv")
         dqn.fit(env, nb_steps=STEPS_PER_EPISODE*10000, visualize=True, verbose=2, callbacks=[log])
-    elif args.mode == "test":
+    elif args.mode[0] == "test":
         dqn.test(env, nb_episodes=20, visualize=True)
 
 if __name__ == '__main__':
