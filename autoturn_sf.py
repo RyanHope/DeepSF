@@ -44,6 +44,24 @@ class SF_Env(gym.Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
+    def __make_state(self, world, done):
+        ret = [0.0] * self.num_features
+        if not done:
+            ret = list(map(float, [
+                world["ship"]["alive"],
+                world["ship"]["orientation"],
+                world["ship"]["vdir"],
+                world["ship"]["distance-from-fortress"],
+                world["fortress"]["alive"],
+                world["vlner"],
+                len(world["missiles"]),
+                len(world["shells"]),
+                world["pnts"],
+                self.thrusting,
+                self.shooting
+            ]))
+        return ret
+
     def _reset(self):
         self._destroy()
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -87,24 +105,6 @@ class AutoturnSF_Env(SF_Env):
         low = np.array(low * self.historylen)
         high = np.array(high * self.historylen)
         self.observation_space = spaces.Box(low, high)
-
-    def __make_state(self, world, done):
-        ret = [0.0] * self.num_features
-        if not done:
-            ret = list(map(float, [
-                world["ship"]["alive"],
-                world["ship"]["orientation"],
-                world["ship"]["vdir"],
-                world["ship"]["distance-from-fortress"],
-                world["fortress"]["alive"],
-                world["vlner"],
-                len(world["missiles"]),
-                len(world["shells"]),
-                world["pnts"],
-                self.thrusting,
-                self.shooting
-            ]))
-        return ret
 
     def _destroy(self):
         if self.sf != None:

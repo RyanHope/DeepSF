@@ -21,6 +21,7 @@ import warnings
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Flatten
 from keras.optimizers import Adam
+from keras.utils.visualize_util import plot
 
 from rl.agents.dqn import DQNAgent
 from rl.policy import BoltzmannQPolicy, EpsGreedyQPolicy
@@ -114,7 +115,7 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
         if episode % 10 == 0:
             dqn.save_weights('dqn_autoturn_sf_weights.h5f', overwrite=True)
 
-def main():
+def main(args):
     env = AutoturnSF_Env("DQN-SF")
     env.reset()
 
@@ -131,6 +132,9 @@ def main():
     model.add(Activation('relu'))
     model.add(Dense(nb_actions))
     model.add(Activation('linear'))
+    if args.mode == "plot":
+        plot(model, to_file='dqn_autoturn_sf_model.png', show_shapes=True)
+        sys.exit(1)
     print(model.summary())
 
     # Finally, we configure and compile our agent. You can use every built-in Keras optimizer and
@@ -147,18 +151,15 @@ def main():
     if os.path.isfile('dqn_autoturn_sf_weights.h5f'):
         dqn.load_weights('dqn_autoturn_sf_weights.h5f')
 
-    log = TrainEpisodeFileLogger(env, dqn, "dqn_autoturn_sf_log.tsv")
-
-    # Okay, now it's time to learn something! We visualize the training here for show, but this
-    # slows down training quite a lot. You can always safely abort the training prematurely using
-    # Ctrl + C.
-    dqn.fit(env, nb_steps=STEPS_PER_EPISODE*10000, visualize=True, verbose=2, callbacks=[log])
-
-    # After training is done, we save the final weights.
-    #dqn.save_weights('dqn_autoturn_sf_weights.h5f', overwrite=True)
-
-    # Finally, evaluate our algorithm for 5 episodes.
-    #dqn.test(env, nb_episodes=5, visualize=True)
+    if args.mode == "train":
+        log = TrainEpisodeFileLogger(env, dqn, "dqn_autoturn_sf_log.tsv")
+        dqn.fit(env, nb_steps=STEPS_PER_EPISODE*10000, visualize=True, verbose=2, callbacks=[log])
+    elif args.mode == "test":
+        dqn.test(env, nb_episodes=20, visualize=True)
 
 if __name__ == '__main__':
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description='Autoturn SF DQN Model')
+    parser.add_argument('--mode', nargs=1, choices=['train', 'test', 'plot'], default='plot')
+    args = parser.parse_args()
+    main(args)
