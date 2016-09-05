@@ -88,14 +88,6 @@ class AutoturnSF_Env(gym.Env):
         self.state = [self.__make_state(self.world, False)] * self.historylen
         return list(itertools.chain.from_iterable(self.state))
 
-    def _step(self, action):
-        self.__do_action(action)
-        world = self.__send_command("continue", ret=True)
-        state, reward, done = self.__process_world(world)
-        self.state.pop(0)
-        self.state.append(state)
-        return np.array(list(itertools.chain.from_iterable(self.state))), reward, done, {}
-
     def _render(self, mode='human', close=False):
         return True
 
@@ -120,7 +112,7 @@ class AutoturnSF_Env(gym.Env):
         self.resets = 0
         self.world = {}
 
-    def __do_action(self, action):
+    def _step(self, action):
         done = False
         reward = 0
         thrusting = self.thrusting
@@ -153,9 +145,7 @@ class AutoturnSF_Env(gym.Env):
         #     if not self.shooting:
         #         self.__send_command("keydown", "fire")
         #         shooting = True
-
-    def __process_world(self, world):
-        reward = 0
+        world = self.__send_command("continue", ret=True)
         if "raw_pnts" in world:
             now = time.time()
             reward += world["raw_pnts"] - self.score
@@ -181,4 +171,6 @@ class AutoturnSF_Env(gym.Env):
         self.world = world
         self.shooting = shooting
         self.thrusting = thrusting
-        return self.__make_state(world, done), reward, done
+        self.state.pop(0)
+        self.state.append(self.__make_state(world, done))
+        return np.array(list(itertools.chain.from_iterable(self.state))), reward, done, {}
