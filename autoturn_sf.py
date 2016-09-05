@@ -11,15 +11,14 @@ import gym
 from gym import spaces
 from gym.utils import seeding
 
-
-class SF_Env(gym.Env):
+class AutoturnSF_Env(gym.Env):
 
     metadata = {
         'render.modes': ['human'],
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen):
+    def __init__(self, sid, historylen=8):
         self.sid = sid
 
         self._seed()
@@ -29,6 +28,22 @@ class SF_Env(gym.Env):
 
         self.historylen = historylen
         self.state = []
+
+        """
+        Discrete actions:
+        0: NOOP - thrust_up, shoot_up
+        1: THRUST - thrust_down, shoot_up
+        2: SHOOT - thrust_up, shoot_down
+        3: THRUSTSHOOT - thrust_down, thrust_shoot
+        """
+        self.action_space = spaces.Discrete(3)
+
+        self.num_features = 11
+        low = [0] * self.num_features
+        high = [1, 360, 360, 200, 1, 100, 20, 20, np.inf, 1, 1]
+        low = np.array(low * self.historylen)
+        high = np.array(high * self.historylen)
+        self.observation_space = spaces.Box(low, high)
 
     def __send_command(self, cmd, *args, **kwargs):
         out = {"command": cmd}
@@ -83,28 +98,6 @@ class SF_Env(gym.Env):
 
     def _render(self, mode='human', close=False):
         return True
-
-
-class AutoturnSF_Env(SF_Env):
-
-    def __init__(self, sid, historylen=8):
-        super(AutoturnSF_Env, self).__init__(sid, historylen)
-
-        """
-        Discrete actions:
-        0: NOOP - thrust_up, shoot_up
-        1: THRUST - thrust_down, shoot_up
-        2: SHOOT - thrust_up, shoot_down
-        3: THRUSTSHOOT - thrust_down, thrust_shoot
-        """
-        self.action_space = spaces.Discrete(3)
-
-        self.num_features = 11
-        low = [0] * self.num_features
-        high = [1, 360, 360, 200, 1, 100, 20, 20, np.inf, 1, 1]
-        low = np.array(low * self.historylen)
-        high = np.array(high * self.historylen)
-        self.observation_space = spaces.Box(low, high)
 
     def _destroy(self):
         if self.sf != None:
