@@ -11,14 +11,15 @@ import gym
 from gym import spaces
 from gym.utils import seeding
 
-class AutoturnSF_Env(gym.Env):
+
+class SF_Env(gym.Env):
 
     metadata = {
         'render.modes': ['human'],
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid):
+    def __init__(self, sid, historylen):
         self.sid = sid
 
         self._seed()
@@ -26,23 +27,7 @@ class AutoturnSF_Env(gym.Env):
         self.s = None
         self.sf = None
 
-        """
-        Discrete actions:
-        0: NOOP - thrust_up, shoot_up
-        1: THRUST - thrust_down, shoot_up
-        2: SHOOT - thrust_up, shoot_down
-        3: THRUSTSHOOT - thrust_down, thrust_shoot
-        """
-        self.historylen = 8
-        self.num_features = 11
-        self.action_space = spaces.Discrete(3)
-        low = [0] * self.num_features
-        high = [1, 360, 360, 200, 1, 100, 20, 20, np.inf, 1, 1]
-        low = np.array(low * self.historylen)
-        high = np.array(high * self.historylen)
-        self.observation_space = spaces.Box(low, high)
-        # high = np.array([np.inf]*self.num_features*self.historylen)
-        # self.observation_space = spaces.Box(-high, high)
+        self.historylen = historylen
         self.state = []
 
     def __send_command(self, cmd, *args, **kwargs):
@@ -54,6 +39,54 @@ class AutoturnSF_Env(gym.Env):
         self.sf.flush()
         if "ret" in kwargs and kwargs["ret"]:
             return json.loads(self.sf.readline())
+
+    def _seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
+
+    def _reset(self):
+        self._destroy()
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.s.connect(("localhost", 3000))
+        self.sf = self.s.makefile()
+        self.config = json.loads(self.sf.readline())
+        self.config = self.__send_command("id", self.sid, ret=True)
+        self.world = self.__send_command("continue", ret=True)
+        self.state = [self.__make_state(self.world, False)] * self.historylen
+        return list(itertools.chain.from_iterable(self.state))
+
+    def _step(self, action):
+        self.__do_action(action)
+        world = self.__send_command("continue", ret=True)
+        state, reward, done = self.__process_world(world)
+        self.state.pop(0)
+        self.state.append(state)
+        return np.array(list(itertools.chain.from_iterable(self.state))), reward, done, {}
+
+    def _render(self, mode='human', close=False):
+        return True
+
+
+class AutoturnSF_Env(SF_Env):
+
+    def __init__(self, sid, historylen=8):
+        super(AutoturnSF_Env, self).__init__(sid, historylen)
+
+        """
+        Discrete actions:
+        0: NOOP - thrust_up, shoot_up
+        1: THRUST - thrust_down, shoot_up
+        2: SHOOT - thrust_up, shoot_down
+        3: THRUSTSHOOT - thrust_down, thrust_shoot
+        """
+        self.action_space = spaces.Discrete(3)
+
+        self.num_features = 11
+        low = [0] * self.num_features
+        high = [1, 360, 360, 200, 1, 100, 20, 20, np.inf, 1, 1]
+        low = np.array(low * self.historylen)
+        high = np.array(high * self.historylen)
+        self.observation_space = spaces.Box(low, high)
 
     def __make_state(self, world, done):
         ret = [0.0] * self.num_features
@@ -72,10 +105,6 @@ class AutoturnSF_Env(gym.Env):
                 self.shooting
             ]))
         return ret
-
-    def _seed(self, seed=None):
-        self.np_random, seed = seeding.np_random(seed)
-        return [seed]
 
     def _destroy(self):
         if self.sf != None:
@@ -98,22 +127,7 @@ class AutoturnSF_Env(gym.Env):
         self.resets = 0
         self.world = {}
 
-    def _reset(self):
-        self._destroy()
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.connect(("localhost", 3000))
-        self.sf = self.s.makefile()
-        self.config = json.loads(self.sf.readline())
-        self.config = self.__send_command("id", self.sid, ret=True)
-        self.world = self.__send_command("continue", ret=True)
-        self.state = [self.__make_state(self.world, False)] * self.historylen
-        self.last_death = time.time()
-        return list(itertools.chain.from_iterable(self.state))
-
-    def _render(self, mode='human', close=False):
-        return True
-
-    def _step(self, action):
+    def __do_action(self, action):
         done = False
         reward = 0
         thrusting = self.thrusting
@@ -146,7 +160,8 @@ class AutoturnSF_Env(gym.Env):
         #     if not self.shooting:
         #         self.__send_command("keydown", "fire")
         #         shooting = True
-        world = self.__send_command("continue", ret=True)
+
+    def __process_world(self, world):
         reward = 0
         if "raw_pnts" in world:
             now = time.time()
@@ -173,6 +188,4 @@ class AutoturnSF_Env(gym.Env):
         self.world = world
         self.shooting = shooting
         self.thrusting = thrusting
-        self.state.pop(0)
-        self.state.append(self.__make_state(world, done))
-        return np.array(list(itertools.chain.from_iterable(self.state))), reward, done, {}
+        return self.__make_state(world, done), reward, done

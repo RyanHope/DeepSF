@@ -114,8 +114,7 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
         if episode % 10 == 0:
             dqn.save_weights('dqn_autoturn_sf_weights.h5f', overwrite=True)
 
-if __name__ == '__main__':
-
+def main():
     env = AutoturnSF_Env("DQN-SF")
     env.reset()
 
@@ -160,3 +159,6 @@ if __name__ == '__main__':
 
     # Finally, evaluate our algorithm for 5 episodes.
     #dqn.test(env, nb_episodes=5, visualize=True)
+
+if __name__ == '__main__':
+    main()
