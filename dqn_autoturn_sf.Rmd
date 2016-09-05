@@ -1,7 +1,8 @@
 ---
 title: "Deep Learning Spacefortress Models"
-output: 
-  html_document: 
+output:
+  html_document:
+    self_contained: true
     keep_md: yes
 ---
 
