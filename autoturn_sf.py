@@ -34,10 +34,10 @@ class AutoturnSF_Env(gym.Env):
         3: THRUSTSHOOT - thrust_down, thrust_shoot
         """
         self.historylen = 8
-        self.num_features = 10
-        self.action_space = spaces.Discrete(4)
+        self.num_features = 11
+        self.action_space = spaces.Discrete(3)
         low = [0] * self.num_features
-        high = [1, 360, 360, 200, 1, 100, 20, 20, 1, 1]
+        high = [1, 360, 360, 200, 1, 100, 20, 20, np.inf, 1, 1]
         low = np.array(low * self.historylen)
         high = np.array(high * self.historylen)
         self.observation_space = spaces.Box(low, high)
@@ -67,6 +67,7 @@ class AutoturnSF_Env(gym.Env):
                 world["vlner"],
                 len(world["missiles"]),
                 len(world["shells"]),
+                world["pnts"],
                 self.thrusting,
                 self.shooting
             ]))
@@ -138,13 +139,13 @@ class AutoturnSF_Env(gym.Env):
             if not self.shooting:
                 self.__send_command("keydown", "fire")
                 shooting = True
-        elif action == 3:
-            if not self.thrusting:
-                self.__send_command("keydown", "thrust")
-                thrusting = True
-            if not self.shooting:
-                self.__send_command("keydown", "fire")
-                shooting = True
+        # elif action == 3:
+        #     if not self.thrusting:
+        #         self.__send_command("keydown", "thrust")
+        #         thrusting = True
+        #     if not self.shooting:
+        #         self.__send_command("keydown", "fire")
+        #         shooting = True
         world = self.__send_command("continue", ret=True)
         reward = 0
         if "raw_pnts" in world:

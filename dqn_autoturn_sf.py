@@ -7,6 +7,8 @@ Ideas:
   * Replay buffer filling up is like a warm-up after taking a break
     - Should buffer be filled/pruned intelligently (e.g. local maxima/minima)
   * Inferring the timing/reset rule is hard because it conflicts with the kill rule
+  * thrusting = avoiding negative reward, shooting = gaining positive reward
+  * predictive eye movements: saccade to border where impact is imminent
 """
 
 from __future__ import print_function
@@ -114,7 +116,7 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
 
 if __name__ == '__main__':
 
-    env = AutoturnSF_Env("DeefSF")
+    env = AutoturnSF_Env("DQN-SF")
     env.reset()
 
     nb_actions = env.action_space.n
@@ -139,7 +141,7 @@ if __name__ == '__main__':
 
     memory = SequentialMemory(limit=STEPS_PER_EPISODE*1000)
     #policy = BoltzmannQPolicy(tau=5)
-    policy = EpsGreedyQPolicy()
+    policy = EpsGreedyQPolicy(eps=.1)
     dqn = DQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=0,
                    target_model_update=1e-2, policy=policy)
     dqn.compile(Adam(lr=1e-3), metrics=['mae'])
