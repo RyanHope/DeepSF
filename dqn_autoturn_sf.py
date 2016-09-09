@@ -56,7 +56,8 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
             'obs_mean',
             'obs_min',
             'obs_max'
-        ] + self.metrics_names + ['maxscore', 'outer_deaths', 'inner_deaths', 'resets', 'fortress_kills', 'raw_pnts', 'total']
+        ] + self.metrics_names + ['maxscore', 'outer_deaths', 'inner_deaths', 'shell_deaths', 'resets',
+                                  'reset_vlners', 'isi_pre', 'isi_post', 'fortress_kills', 'raw_pnts', 'total']
         self.file.write("%s\n" % "\t".join(header))
         self.file.flush()
         self.train_start = timeit.default_timer()
@@ -100,7 +101,11 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
             np.mean(self.observations[episode]),
             np.min(self.observations[episode]),
             np.max(self.observations[episode])
-        ] + metric_values + [self.env.maxscore, self.env.outer_deaths, self.env.inner_deaths, self.env.resets, self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]]
+        ] + metric_values + [self.env.maxscore, self.env.outer_deaths, self.env.inner_deaths, self.env.shell_deaths,
+                             self.env.resets, np.mean(self.env.reset_vlners) if len(self.env.reset_vlners)>0 else "NA",
+                             np.mean(self.env.shot_intervals[0]) if len(self.env.shot_intervals[0])>0 else "NA",
+                             np.mean(self.env.shot_intervals[1]) if len(self.env.shot_intervals[1])>0 else "NA",
+                             self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]]
         self.file.write("%s\n" % "\t".join(map(str,variables)))
         self.file.flush()
 
@@ -112,11 +117,11 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
         del self.metrics[episode]
 
         if episode % 10 == 0:
-            dqn.save_weights('dqn_autoturn_sf_weights.h5f', overwrite=True)
+            self.dqn.save_weights('dqn_autoturn_sf_weights.h5f', overwrite=True)
 
 def main(args):
-    env = AutoturnSF_Env("DQN-SF")
-    env.reset()
+    env = AutoturnSF_Env("DQN-SF", 8)
+    #env.reset()
 
     nb_actions = env.action_space.n
 
@@ -145,7 +150,7 @@ def main(args):
     memory = SequentialMemory(limit=STEPS_PER_EPISODE*1000)
     #policy = BoltzmannQPolicy(tau=5)
     policy = EpsGreedyQPolicy(eps=.1)
-    dqn = DQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=0,
+    dqn = DQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=8,
                    target_model_update=1e-2, policy=policy)
     dqn.compile(Adam(lr=1e-3), metrics=['mae'])
     if os.path.isfile('dqn_autoturn_sf_weights.h5f'):
@@ -153,7 +158,7 @@ def main(args):
 
     if args.mode[0] == "train":
         log = TrainEpisodeFileLogger(env, dqn, "dqn_autoturn_sf_log.tsv")
-        dqn.fit(env, nb_steps=STEPS_PER_EPISODE*10000, visualize=True, verbose=2, callbacks=[log])
+        dqn.fit(env, nb_steps=STEPS_PER_EPISODE*10000, visualize=True, verbose=2, callbacks=[log], action_repetition=3)
     elif args.mode[0] == "test":
         dqn.test(env, nb_episodes=20, visualize=True)
 
