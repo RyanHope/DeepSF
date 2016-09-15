@@ -23,7 +23,7 @@ from keras.layers import Dense, Activation, Flatten
 from keras.optimizers import Adam
 
 from rl.agents.dqn import DQNAgent
-from rl.policy import BoltzmannQPolicy, EpsGreedyQPolicy
+from rl.policy import BoltzmannQPolicy, EpsGreedyQPolicy, LinearAnnealedPolicy
 from rl.memory import SequentialMemory
 from rl.callbacks import TrainEpisodeLogger
 
@@ -106,7 +106,7 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
                              np.mean(self.env.shot_intervals[0]) if len(self.env.shot_intervals[0])>0 else "NA",
                              np.mean(self.env.shot_intervals[1]) if len(self.env.shot_intervals[1])>0 else "NA",
                              self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]]
-        self.file.write("%s\n" % "\t".join(map(str,variables)))
+        self.file.write("%s\n" % "\t".join(map(str,map(lambda x: "NA" if x=="--" else x, variables))))
         self.file.flush()
 
         # Free up resources.
@@ -120,7 +120,7 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
             self.dqn.save_weights('dqn_autoturn_sf_weights.h5f', overwrite=True)
 
 def main(args):
-    env = AutoturnSF_Env("DQN-SF", 8)
+    env = AutoturnSF_Env("DQN-SF", 4, 2)
     #env.reset()
 
     nb_actions = env.action_space.n
@@ -128,6 +128,7 @@ def main(args):
     # Next, we build a very simple model.
     model = Sequential()
     model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
+    #model.add(Flatten(input_shape=(env.historylen,1,env.num_features)))
     model.add(Dense(64))
     model.add(Activation('relu'))
     model.add(Dense(64))
@@ -147,18 +148,30 @@ def main(args):
 
     STEPS_PER_EPISODE = 5455
 
-    memory = SequentialMemory(limit=STEPS_PER_EPISODE*1000)
-    #policy = BoltzmannQPolicy(tau=5)
-    policy = EpsGreedyQPolicy(eps=.1)
-    dqn = DQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=8,
-                   target_model_update=1e-2, policy=policy)
-    dqn.compile(Adam(lr=1e-3), metrics=['mae'])
+    # memory = SequentialMemory(limit=STEPS_PER_EPISODE*184)
+    # policy = BoltzmannQPolicy(tau=10000, clip=(-200000., 200000.))
+    # #policy = EpsGreedyQPolicy(eps=.1)
+    # #policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=1., value_min=.1, value_test=.05,
+    # #                          nb_steps=STEPS_PER_EPISODE*917)
+    # dqn = DQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=100,
+    #                target_model_update=1e-2, policy=policy)
+    # optimizer = Adam(lr=.003)
+    # dqn.compile(optimizer, metrics=['mae'])
+
+    memory = SequentialMemory(limit=STEPS_PER_EPISODE*200)
+    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.4, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
+    dqn = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, window_length=1, memory=memory,
+        #nb_steps_warmup=50000, gamma=.99, delta_range=(-200000., 200000.),
+        nb_steps_warmup=0, gamma=.99, delta_range=(-200000., 200000.),
+        target_model_update=10000, train_interval=4)
+    dqn.compile(Adam(lr=.00025), metrics=['mae'])
+
     if os.path.isfile('dqn_autoturn_sf_weights.h5f'):
         dqn.load_weights('dqn_autoturn_sf_weights.h5f')
 
     if args.mode[0] == "train":
         log = TrainEpisodeFileLogger(env, dqn, "dqn_autoturn_sf_log.tsv")
-        dqn.fit(env, nb_steps=STEPS_PER_EPISODE*10000, visualize=True, verbose=2, callbacks=[log], action_repetition=3)
+        dqn.fit(env, nb_steps=STEPS_PER_EPISODE*2000, visualize=True, verbose=2, callbacks=[log])#, action_repetition=3)
     elif args.mode[0] == "test":
         dqn.test(env, nb_episodes=20, visualize=True)
 
