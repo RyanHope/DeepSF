@@ -10,12 +10,10 @@
 ---
   
 ```{r,include=FALSE}
-setwd("C:/Users/Ryan/workspace/DeepSF")
-
 require(data.table)
 require(ggplot2)
 
-d = fread("onr/dqn_autoturn_sf_log-long.tsv", header=T)
+d = fread("dqn_autoturn_sf_log-long.tsv", header=T)
 ```
 
 ---
