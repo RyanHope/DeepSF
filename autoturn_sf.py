@@ -42,10 +42,6 @@ class AutoturnSF_Env(gym.Env):
         self.action_space = spaces.Discrete(3)
 
         self.num_features = 15
-        # low = [0] * (self.num_features-2) + [-np.inf, -np.inf]
-        # high = [1, 710, 626, 360, 360, 200, 1, 100, 20, 20, np.inf, np.inf, np.inf]
-        # low = np.array(low * self.historylen)
-        # high = np.array(high * self.historylen)
         high = np.array([np.inf]*self.num_features*self.historylen)
         self.observation_space = spaces.Box(-high, high)
 
@@ -87,8 +83,6 @@ class AutoturnSF_Env(gym.Env):
 
     def __reshape_state(self):
         return list(itertools.chain.from_iterable(self.state))
-        #return np.array(self.state).reshape(1,self.num_features,self.historylen)
-        #state = np.array(self.state)
         return state
 
     def _reset(self):
