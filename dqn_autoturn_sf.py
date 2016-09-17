@@ -116,7 +116,7 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
         del self.metrics[episode]
 
         if episode % 10 == 0:
-            self.dqn.save_weights(self.weightfile, overwrite=True)
+            self.dqn.save_weights(self.weightsfile, overwrite=True)
 
 def main(args):
 
@@ -157,13 +157,13 @@ def main(args):
         target_model_update=10000, train_interval=4)
     dqn.compile(Adam(lr=.00025), metrics=['mae'])
 
-    if os.path.isfile(args.weights):
+    if args.weights != None and os.path.isfile(args.weights):
         dqn.load_weights(args.weights)
 
-    if args.mode[0] == "train":
+    if args.mode == "train":
         log = TrainEpisodeFileLogger(env, dqn, logfile, weightsfile)
         dqn.fit(env, nb_steps=STEPS_PER_EPISODE*2000, visualize=True, verbose=2, callbacks=[log])#, action_repetition=3)
-    elif args.mode[0] == "test":
+    elif args.mode == "test":
         dqn.test(env, nb_episodes=20, visualize=True)
 
 if __name__ == '__main__':
