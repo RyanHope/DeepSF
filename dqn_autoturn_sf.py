@@ -71,7 +71,6 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
         duration = timeit.default_timer() - self.episode_start[episode]
         episode_steps = len(self.observations[episode])
 
-        # Format all metrics.
         metrics = np.array(self.metrics[episode])
         metric_values = []
         with warnings.catch_warnings():
@@ -109,7 +108,6 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
         self.file.write("%s\n" % "\t".join(map(str,map(lambda x: "NA" if x=="--" else x, variables))))
         self.file.flush()
 
-        # Free up resources.
         del self.episode_start[episode]
         del self.observations[episode]
         del self.rewards[episode]
@@ -121,14 +119,11 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
 
 def main(args):
     env = AutoturnSF_Env("DQN-SF", 4, 2)
-    #env.reset()
 
     nb_actions = env.action_space.n
 
-    # Next, we build a very simple model.
     model = Sequential()
     model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
-    #model.add(Flatten(input_shape=(env.historylen,1,env.num_features)))
     model.add(Dense(64))
     model.add(Activation('relu'))
     model.add(Dense(64))
@@ -137,31 +132,13 @@ def main(args):
     model.add(Activation('relu'))
     model.add(Dense(nb_actions))
     model.add(Activation('linear'))
-    if args.mode[0] == "plot":
-        from keras.utils.visualize_util import plot
-        plot(model, to_file='dqn_autoturn_sf_model.png', show_shapes=True)
-        sys.exit(1)
     print(model.summary())
 
-    # Finally, we configure and compile our agent. You can use every built-in Keras optimizer and
-    # even the metrics!
-
     STEPS_PER_EPISODE = 5455
-
-    # memory = SequentialMemory(limit=STEPS_PER_EPISODE*184)
-    # policy = BoltzmannQPolicy(tau=10000, clip=(-200000., 200000.))
-    # #policy = EpsGreedyQPolicy(eps=.1)
-    # #policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=1., value_min=.1, value_test=.05,
-    # #                          nb_steps=STEPS_PER_EPISODE*917)
-    # dqn = DQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=100,
-    #                target_model_update=1e-2, policy=policy)
-    # optimizer = Adam(lr=.003)
-    # dqn.compile(optimizer, metrics=['mae'])
 
     memory = SequentialMemory(limit=STEPS_PER_EPISODE*200)
     policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.4, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
     dqn = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, window_length=1, memory=memory,
-        #nb_steps_warmup=50000, gamma=.99, delta_range=(-200000., 200000.),
         nb_steps_warmup=0, gamma=.99, delta_range=(-200000., 200000.),
         target_model_update=10000, train_interval=4)
     dqn.compile(Adam(lr=.00025), metrics=['mae'])
@@ -178,6 +155,6 @@ def main(args):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Autoturn SF DQN Model')
-    parser.add_argument('--mode', nargs=1, choices=['train', 'test', 'plot'], default='plot')
+    parser.add_argument('--mode', nargs=1, choices=['train', 'test'], default='train')
     args = parser.parse_args()
     main(args)
