@@ -30,15 +30,16 @@ from rl.callbacks import TrainEpisodeLogger
 from autoturn_sf import AutoturnSF_Env
 
 class TrainEpisodeFileLogger(TrainEpisodeLogger):
-    def __init__(self, env, dqn, filename):
+    def __init__(self, env, dqn, logfile, weightsfile):
         super(TrainEpisodeFileLogger, self).__init__()
         self.env = env
         self.dqn = dqn
-        self.filename = os.path.expanduser(filename)
+        self.logfile = logfile
+        self.weightsfile = weightsfile
 
     def on_train_begin(self, logs):
         self.metrics_names = self.model.metrics_names
-        self.file = open(self.filename, "w")
+        self.file = open(self.logfile, "w")
         header = [
             'step',
             'nb_steps',
@@ -115,9 +116,22 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
         del self.metrics[episode]
 
         if episode % 10 == 0:
-            self.dqn.save_weights('dqn_autoturn_sf_weights.h5f', overwrite=True)
+            self.dqn.save_weights(self.weightfile, overwrite=True)
 
 def main(args):
+
+    base = os.path.expanduser(args.data)
+    if not os.path.exists(base):
+        os.makedirs(base)
+    if not os.path.isdir(base):
+        raise Exception("Specified data directory is not a directory.")
+
+    logfile = None
+    weightfile = None
+    if args.log != None:
+        logfile = os.path.join(base, "%s_log.tsv" % args.log)
+        weightsfile = os.path.join(base, "%s_weights.h5f" % args.log)
+
     env = AutoturnSF_Env("DQN-SF", 4, 2)
 
     nb_actions = env.action_space.n
@@ -143,11 +157,11 @@ def main(args):
         target_model_update=10000, train_interval=4)
     dqn.compile(Adam(lr=.00025), metrics=['mae'])
 
-    if os.path.isfile('dqn_autoturn_sf_weights.h5f'):
-        dqn.load_weights('dqn_autoturn_sf_weights.h5f')
+    if os.path.isfile(args.weights):
+        dqn.load_weights(args.weights)
 
     if args.mode[0] == "train":
-        log = TrainEpisodeFileLogger(env, dqn, "dqn_autoturn_sf_log.tsv")
+        log = TrainEpisodeFileLogger(env, dqn, logfile, weightsfile)
         dqn.fit(env, nb_steps=STEPS_PER_EPISODE*2000, visualize=True, verbose=2, callbacks=[log])#, action_repetition=3)
     elif args.mode[0] == "test":
         dqn.test(env, nb_episodes=20, visualize=True)
@@ -155,6 +169,9 @@ def main(args):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Autoturn SF DQN Model')
-    parser.add_argument('--mode', nargs=1, choices=['train', 'test'], default='train')
+    parser.add_argument('-m','--mode', nargs=1, choices=['train', 'test'], default='train')
+    parser.add_argument('-d','--data', default="data")
+    parser.add_argument('-l','--log', default=None)
+    parser.add_argument('-w','--weights', default=None)
     args = parser.parse_args()
     main(args)
