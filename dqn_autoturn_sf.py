@@ -132,7 +132,7 @@ def main(args):
         logfile = os.path.join(base, "%s_log.tsv" % args.log)
         weightsfile = os.path.join(base, "%s_weights.h5f" % args.log)
 
-    env = AutoturnSF_Env("DQN-SF", 4, 2)
+    env = AutoturnSF_Env("DQN-SF", 4, 2, visualize=args.visualize)
 
     nb_actions = env.action_space.n
 
@@ -151,11 +151,11 @@ def main(args):
     STEPS_PER_EPISODE = 5455
 
     memory = SequentialMemory(limit=STEPS_PER_EPISODE*200)
-    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.4, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
+    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.5, value_min=.005, value_test=.005, nb_steps=STEPS_PER_EPISODE*1000)
     dqn = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, window_length=1, memory=memory,
         nb_steps_warmup=0, gamma=.99, delta_range=(-200000., 200000.),
-        target_model_update=10000, train_interval=4)
-    dqn.compile(Adam(lr=.00025), metrics=['mae'])
+        target_model_update=10000, train_interval=1)
+    dqn.compile(Adam(lr=.0005), metrics=['mae'])
 
     if args.weights != None and os.path.isfile(args.weights):
         dqn.load_weights(args.weights)
@@ -173,5 +173,6 @@ if __name__ == '__main__':
     parser.add_argument('-d','--data', default="data")
     parser.add_argument('-l','--log', default=None)
     parser.add_argument('-w','--weights', default=None)
+    parser.add_argument('-v','--visualize', action='store_true')
     args = parser.parse_args()
     main(args)

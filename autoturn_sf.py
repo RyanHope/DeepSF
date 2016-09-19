@@ -20,7 +20,7 @@ class AutoturnSF_Env(gym.Env):
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen=8, repeat=1):
+    def __init__(self, sid, historylen=8, repeat=1, visualize=False):
         self.sid = sid
 
         self._seed()
@@ -31,6 +31,8 @@ class AutoturnSF_Env(gym.Env):
         self.historylen = historylen
         self.repeat = repeat
         self.state = []
+
+        self.visualize = visualize
 
         """
         Discrete actions:
@@ -92,7 +94,8 @@ class AutoturnSF_Env(gym.Env):
         self.sf = self.s.makefile()
         self.config = json.loads(self.sf.readline())
         self.config = self.__send_command("id", self.sid, ret=True)
-        #self.__send_command("config", "display_level", 0, ret=True)
+        if not self.visualize:
+            self.__send_command("config", "display_level", 0, ret=True)
         self.world = self.__send_command("continue", ret=True)
         self.state = [self.__make_state(self.world, False)] * self.historylen
         return self.__reshape_state()
