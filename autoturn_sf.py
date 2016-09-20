@@ -47,6 +47,14 @@ class AutoturnSF_Env(gym.Env):
         high = np.array([np.inf]*self.num_features*self.historylen)
         self.observation_space = spaces.Box(-high, high)
 
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.s.connect(("localhost", 3000))
+        self.sf = self.s.makefile()
+        self.config = json.loads(self.sf.readline())
+        self.config = self.__send_command("id", self.sid, ret=True)
+        if not self.visualize:
+            self.__send_command("config", "display_level", 0, ret=True)
+
     def __send_command(self, cmd, *args, **kwargs):
         out = {"command": cmd}
         if len(args) > 0:
@@ -89,13 +97,6 @@ class AutoturnSF_Env(gym.Env):
 
     def _reset(self):
         self._destroy()
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.connect(("localhost", 3000))
-        self.sf = self.s.makefile()
-        self.config = json.loads(self.sf.readline())
-        self.config = self.__send_command("id", self.sid, ret=True)
-        if not self.visualize:
-            self.__send_command("config", "display_level", 0, ret=True)
         self.world = self.__send_command("continue", ret=True)
         self.state = [self.__make_state(self.world, False)] * self.historylen
         return self.__reshape_state()
@@ -104,14 +105,6 @@ class AutoturnSF_Env(gym.Env):
         return True
 
     def _destroy(self):
-        if self.sf != None:
-            self.sf.close()
-            self.sf = None
-        if self.s != None:
-            self.s.close()
-            self.s = None
-        self.config = None
-        self.config = None
         self.thrusting = -1
         self.shooting = -1
         self.score = 0
