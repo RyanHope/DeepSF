@@ -21,6 +21,7 @@ import warnings
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Flatten
 from keras.optimizers import Adam
+from keras.layers.advanced_activations import ELU
 
 from rl.agents.dqn import DQNAgent
 from rl.policy import BoltzmannQPolicy, EpsGreedyQPolicy, LinearAnnealedPolicy
@@ -132,17 +133,17 @@ def main(args):
         logfile = os.path.join(base, "%s_log.tsv" % args.log)
         weightsfile = os.path.join(base, "%s_weights.h5f" % args.log)
 
-    env = AutoturnSF_Env("DQN-SF", 4, 2, visualize=args.visualize)
+    env = AutoturnSF_Env("DQN-SF-ELU", 4, 2, visualize=args.visualize)
 
     nb_actions = env.action_space.n
 
     model = Sequential()
     model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
-    model.add(Dense(64))
+    model.add(ELU(alpha=1.0))
     model.add(Activation('relu'))
-    model.add(Dense(64))
+    model.add(ELU(alpha=1.0))
     model.add(Activation('relu'))
-    model.add(Dense(64))
+    model.add(ELU(alpha=1.0))
     model.add(Activation('relu'))
     model.add(Dense(nb_actions))
     model.add(Activation('linear'))
@@ -175,5 +176,5 @@ if __name__ == '__main__':
     parser.add_argument('-w','--weights', default=None)
     parser.add_argument('-v','--visualize', action='store_true')
     args = parser.parse_args()
-    args.network = args.network[0]
+    args.mode = args.mode[0]
     main(args)
