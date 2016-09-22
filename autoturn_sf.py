@@ -1,9 +1,12 @@
 from __future__ import print_function
 
+import sys
+import warnings
 import json
 import socket
 import itertools
 import time
+import timeit
 
 import numpy as np
 
@@ -12,6 +15,98 @@ from gym import spaces
 from gym.utils import seeding
 
 import keras
+from rl.callbacks import TrainEpisodeLogger
+
+class TrainEpisodeFileLogger(TrainEpisodeLogger):
+    def __init__(self, env, dqn, logfile, weightsfile):
+        super(TrainEpisodeFileLogger, self).__init__()
+        self.env = env
+        self.dqn = dqn
+        self.logfile = logfile
+        self.weightsfile = weightsfile
+
+    def on_train_begin(self, logs):
+        self.metrics_names = self.model.metrics_names
+        self.file = open(self.logfile, "w")
+        header = [
+            'id',
+            'step',
+            'nb_steps',
+            'episode',
+            'duration',
+            'episode_steps',
+            'sps',
+            'episode_reward',
+            'reward_mean',
+            'reward_min',
+            'reward_max',
+            'action_mean',
+            'action_min',
+            'action_max',
+            'obs_mean',
+            'obs_min',
+            'obs_max'
+        ] + self.metrics_names + ['maxscore', 'outer_deaths', 'inner_deaths', 'shell_deaths', 'resets',
+                                  'reset_vlners', 'isi_pre', 'isi_post', 'fortress_kills', 'raw_pnts', 'total']
+        self.file.write("%s\n" % "\t".join(header))
+        self.file.flush()
+        self.train_start = timeit.default_timer()
+
+    def on_train_end(self, logs):
+        duration = timeit.default_timer() - self.train_start
+        self.file.write("\n")
+        self.file.close()
+
+    def on_episode_end(self, episode, logs):
+        duration = timeit.default_timer() - self.episode_start[episode]
+        episode_steps = len(self.observations[episode])
+
+        metrics = np.array(self.metrics[episode])
+        metric_values = []
+        with warnings.catch_warnings():
+            warnings.filterwarnings('error')
+            for idx, name in enumerate(self.metrics_names):
+                try:
+                    value = np.nanmean(metrics[:, idx])
+                except Warning:
+                    value = '--'
+                metric_values.append(value)
+
+        nb_step_digits = str(int(np.ceil(np.log10(self.params['nb_steps']))) + 1)
+        variables = [
+            self.env.sid,
+            self.step,
+            self.params['nb_steps'],
+            episode + 1,
+            duration,
+            episode_steps,
+            float(episode_steps) / duration,
+            np.sum(self.rewards[episode]),
+            np.mean(self.rewards[episode]),
+            np.min(self.rewards[episode]),
+            np.max(self.rewards[episode]),
+            np.mean(self.actions[episode]),
+            np.min(self.actions[episode]),
+            np.max(self.actions[episode]),
+            np.mean(self.observations[episode]),
+            np.min(self.observations[episode]),
+            np.max(self.observations[episode])
+        ] + metric_values + [self.env.maxscore, self.env.outer_deaths, self.env.inner_deaths, self.env.shell_deaths,
+                             self.env.resets, np.mean(self.env.reset_vlners) if len(self.env.reset_vlners)>0 else "NA",
+                             np.mean(self.env.shot_intervals[0]) if len(self.env.shot_intervals[0])>0 else "NA",
+                             np.mean(self.env.shot_intervals[1]) if len(self.env.shot_intervals[1])>0 else "NA",
+                             self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]]
+        self.file.write("%s\n" % "\t".join(map(str,map(lambda x: "NA" if x=="--" else x, variables))))
+        self.file.flush()
+
+        del self.episode_start[episode]
+        del self.observations[episode]
+        del self.rewards[episode]
+        del self.actions[episode]
+        del self.metrics[episode]
+
+        if episode % 10 == 0:
+            self.dqn.save_weights(self.weightsfile, overwrite=True)
 
 class AutoturnSF_Env(gym.Env):
 
@@ -167,7 +262,7 @@ class AutoturnSF_Env(gym.Env):
             if shooting < 0:
                 self.shot_interval += 1
             elif self.shooting < 0:
-                if self.world["vlner"] < 10:
+                if self.world["vlner"] < 11:
                     self.shot_intervals[0].append(self.shot_interval)
                 else:
                     self.shot_intervals[1].append(self.shot_interval)
@@ -178,7 +273,7 @@ class AutoturnSF_Env(gym.Env):
                 now = time.time()
                 reward += world["rawpnts"] - self.score
                 if world["ship"]["alive"]:
-                    reward += self.steps * .5
+                    reward += self.steps * 1
                 else:
                     self.steps = 0
                 if not world["ship"]["alive"] and self.world["ship"]["alive"] and "big-hex" in world["collisions"]:
@@ -199,8 +294,8 @@ class AutoturnSF_Env(gym.Env):
                         self.resets += 1
                         reward -= self.world["vlner"]
                     self.reset_vlners.append(self.world["vlner"])
-                if world["vlner"] > self.world["vlner"] and world["fortress"]["alive"] and world["vlner"] > 10:
-                    reward -= 2
+                if world["vlner"] > self.world["vlner"] and world["fortress"]["alive"] and world["vlner"] > 11:
+                    reward -= .5
                 if shooting and not self.shooting:
                     reward += 2
                 self.score = world["rawpnts"]
@@ -215,4 +310,4 @@ class AutoturnSF_Env(gym.Env):
                 break
         self.state.pop(0)
         self.state.append(self.__make_state(self.world, done))
-        return self.__reshape_state(), reward, done, {}
+        return self.__reshape_state(), reward/100000., done, {}
