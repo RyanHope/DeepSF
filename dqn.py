@@ -68,9 +68,11 @@ def main(args):
 
     memory = SequentialMemory(limit=STEPS_PER_EPISODE*500)
     if args.policy == "eps":
-        policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.1, value_min=.005, value_test=.005, nb_steps=STEPS_PER_EPISODE*1000)
+        # policy = EpsGreedyQPolicy(eps=.1)
+        policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.4, value_min=.01, value_test=.005, nb_steps=STEPS_PER_EPISODE*1000)
     elif args.policy == "tau":
-        policy = LinearAnnealedPolicy(BoltzmannQPolicy(), attr='tau', value_max=10, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
+        policy = BoltzmannQPolicy(tau=.85)
+        # policy = LinearAnnealedPolicy(BoltzmannQPolicy(), attr='tau', value_max=2, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
     dqn = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, window_length=1, memory=memory,
         nb_steps_warmup=0, gamma=.99, #delta_range=(-200000., 200000.),
         target_model_update=10*STEPS_PER_EPISODE, train_interval=args.interval)

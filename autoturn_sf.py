@@ -92,7 +92,7 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
             np.min(self.observations[episode]),
             np.max(self.observations[episode])
         ] + metric_values + [self.env.maxscore, self.env.outer_deaths, self.env.inner_deaths, self.env.shell_deaths,
-                             self.env.resets, np.mean(self.env.reset_vlners) if len(self.env.reset_vlners)>0 else "NA",
+                             len(self.env.reset_vlners), np.mean(self.env.reset_vlners) if len(self.env.reset_vlners)>0 else "NA",
                              np.mean(self.env.shot_intervals[0]) if len(self.env.shot_intervals[0])>0 else "NA",
                              np.mean(self.env.shot_intervals[1]) if len(self.env.shot_intervals[1])>0 else "NA",
                              self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]]
@@ -210,10 +210,92 @@ class AutoturnSF_Env(gym.Env):
         self.fortress_kills = 0
         self.shot_intervals = [[],[]]
         self.shot_interval = 0
-        self.resets = 0
         self.steps = 0
         self.reset_vlners = []
         self.world = {}
+
+    def _reward_log(self, world):
+        reward = 0
+        # survival
+        if world["ship"]["alive"]:
+            reward += self.steps * 1
+        # outer death
+        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "big-hex" in world["collisions"]:
+            reward -= 1000
+        # inner death
+        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "small-hex" in world["collisions"]:
+            reward -= 1000
+        # shell death
+        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "shell" in world["collisions"]:
+            reward -= 100
+        # vlner increment < 11
+        if "fortress" in world["collisions"] and not "fortress" in self.world["collisions"] and world["vlner"] < 12:
+            reward += world["vlner"]**2
+        # reset
+        if world["vlner"] == 0 and self.world["vlner"] > 0 and self.world["vlner"] < 11 and world["fortress"]["alive"]:
+            reward -= self.world["vlner"]
+        # fortress kill
+        if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
+            reward += 100000
+        # failed kill
+        if world["vlner"] > self.world["vlner"] and world["fortress"]["alive"] and world["vlner"] > 11:
+            reward -= 5
+        return reward
+
+    def _reward_simple(self, world):
+        reward = 0
+        # ship death
+        if not world["ship"]["alive"] and self.world["ship"]["alive"]:
+            reward -= 1
+        # reset
+        if world["vlner"] == 0 and self.world["vlner"] > 0 and self.world["vlner"] < 11 and world["fortress"]["alive"]:
+            reward -= 1
+        # failed kill
+        if world["vlner"] > self.world["vlner"] and world["fortress"]["alive"] and world["vlner"] > 11:
+            reward -= 1
+        # vlner increment < 11
+        if "fortress" in world["collisions"] and not "fortress" in self.world["collisions"] and world["vlner"] < 12:
+            reward += 1
+        # kill
+        if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
+            reward += 1
+        return max(min(reward, 1), -1)
+
+    def _reward_simple2(self, world):
+        reward = 0.0
+        # ship death
+        if not world["ship"]["alive"] and self.world["ship"]["alive"]:
+            reward -= 1.0
+        # reset
+        if world["vlner"] == 0 and self.world["vlner"] > 0 and self.world["vlner"] < 11 and world["fortress"]["alive"]:
+            reward -= 0.1
+        # failed kill
+        if world["vlner"] > self.world["vlner"] and world["fortress"]["alive"] and world["vlner"] > 11:
+            reward -= 1.0
+        # vlner increment < 11
+        if "fortress" in world["collisions"] and not "fortress" in self.world["collisions"] and world["vlner"] < 12:
+            reward += 0.1
+        # kill
+        if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
+            reward += 10
+        return reward
+
+    def _update_stats(self, world):
+        if not world["ship"]["alive"]:
+            self.steps = 0
+        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "big-hex" in world["collisions"]:
+            self.outer_deaths += 1
+        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "small-hex" in world["collisions"]:
+            self.inner_deaths += 1
+        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "shell" in world["collisions"]:
+            self.shell_deaths += 1
+        if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
+            self.fortress_kills += 1
+        if world["vlner"] == 0 and self.world["vlner"] > 0 and self.world["vlner"] < 11 and world["fortress"]["alive"]:
+            self.reset_vlners.append(self.world["vlner"])
+        self.score = world["rawpnts"]
+        if world["pnts"] > self.maxscore:
+            self.maxscore = world["pnts"]
 
     def _step(self, action):
         done = False
@@ -270,37 +352,8 @@ class AutoturnSF_Env(gym.Env):
 
             world = self.__send_command("continue", ret=True)
             if "rawpnts" in world:
-                now = time.time()
-                reward += world["rawpnts"] - self.score
-                if world["ship"]["alive"]:
-                    reward += self.steps * 1
-                else:
-                    self.steps = 0
-                if not world["ship"]["alive"] and self.world["ship"]["alive"] and "big-hex" in world["collisions"]:
-                    self.outer_deaths += 1
-                    reward -= 900
-                if not world["ship"]["alive"] and self.world["ship"]["alive"] and "small-hex" in world["collisions"]:
-                    self.inner_deaths += 1
-                    reward -= 900
-                if not world["ship"]["alive"] and self.world["ship"]["alive"] and "shell" in world["collisions"]:
-                    self.shell_deaths += 1
-                if "fortress" in world["collisions"] and not "fortress" in self.world["collisions"]:
-                    reward += world["vlner"]**2
-                if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
-                    self.fortress_kills += 1
-                    reward += 99900
-                if world["vlner"] == 0 and self.world["vlner"] > 0:
-                    if world["fortress"]["alive"]:
-                        self.resets += 1
-                        reward -= self.world["vlner"]
-                    self.reset_vlners.append(self.world["vlner"])
-                if world["vlner"] > self.world["vlner"] and world["fortress"]["alive"] and world["vlner"] > 11:
-                    reward -= .5
-                if shooting and not self.shooting:
-                    reward += 2
-                self.score = world["rawpnts"]
-                if world["pnts"] > self.maxscore:
-                    self.maxscore = world["pnts"]
+                reward += self._reward_log(world)
+                self._update_stats(world)
             else:
                 done = True
             self.world = world
