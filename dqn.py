@@ -41,7 +41,7 @@ def main(args):
     if not os.path.isdir(base):
         raise Exception("Specified data directory is not a directory.")
 
-    alias = "dqn-%s-%s-%d" % (args.activation, args.policy, args.interval)
+    alias = "dqn-%s-%s-%d-%d" % (args.activation, args.policy, args.interval, args.memlength)
 
     logfile = None
     weightfile = None
@@ -66,16 +66,16 @@ def main(args):
 
     STEPS_PER_EPISODE = 5455
 
-    memory = SequentialMemory(limit=STEPS_PER_EPISODE*500)
+    memory = SequentialMemory(limit=STEPS_PER_EPISODE*args.memlength)
     if args.policy == "eps":
-        # policy = EpsGreedyQPolicy(eps=.1)
-        policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.4, value_min=.01, value_test=.005, nb_steps=STEPS_PER_EPISODE*1000)
+        #policy = EpsGreedyQPolicy(eps=.001)
+        policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.9, value_min=.05, value_test=.05, nb_steps=STEPS_PER_EPISODE*20)
     elif args.policy == "tau":
         policy = BoltzmannQPolicy(tau=.85)
         # policy = LinearAnnealedPolicy(BoltzmannQPolicy(), attr='tau', value_max=2, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
     dqn = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, window_length=1, memory=memory,
         nb_steps_warmup=0, gamma=.99, #delta_range=(-200000., 200000.),
-        target_model_update=10*STEPS_PER_EPISODE, train_interval=args.interval)
+        target_model_update=2*STEPS_PER_EPISODE, train_interval=args.interval)
     dqn.compile(Adam(lr=.00025), metrics=['mae'])
 
     if args.weights != None and os.path.isfile(args.weights):
@@ -90,13 +90,14 @@ def main(args):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Autoturn SF DQN Model')
-    parser.add_argument('-m','--mode', nargs=1, choices=['train', 'test'], default=['train'])
+    parser.add_argument('-M','--mode', nargs=1, choices=['train', 'test'], default=['train'])
     parser.add_argument('-p','--policy', nargs=1, choices=['eps', 'tau'], default=['eps'])
     parser.add_argument('-a','--activation', nargs=1, choices=['relu', 'elu'], default=['relu'])
     parser.add_argument('-d','--data', default="data")
     parser.add_argument('-w','--weights', default=None)
     parser.add_argument('-v','--visualize', action='store_true')
     parser.add_argument('-i','--interval', default=4, type=int)
+    parser.add_argument('-m','--memlength', default=200, type=int)
     args = parser.parse_args()
     args.mode = args.mode[0]
     args.policy = args.policy[0]

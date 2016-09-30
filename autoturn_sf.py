@@ -216,30 +216,26 @@ class AutoturnSF_Env(gym.Env):
 
     def _reward_log(self, world):
         reward = 0
-        # survival
         if world["ship"]["alive"]:
-            reward += self.steps * 1
-        # outer death
-        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "big-hex" in world["collisions"]:
-            reward -= 1000
-        # inner death
-        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "small-hex" in world["collisions"]:
-            reward -= 1000
-        # shell death
-        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "shell" in world["collisions"]:
-            reward -= 100
-        # vlner increment < 11
-        if "fortress" in world["collisions"] and not "fortress" in self.world["collisions"] and world["vlner"] < 12:
-            reward += world["vlner"]**2
-        # reset
-        if world["vlner"] == 0 and self.world["vlner"] > 0 and self.world["vlner"] < 11 and world["fortress"]["alive"]:
-            reward -= self.world["vlner"]
-        # fortress kill
-        if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
-            reward += 100000
-        # failed kill
-        if world["vlner"] > self.world["vlner"] and world["fortress"]["alive"] and world["vlner"] > 11:
-            reward -= 5
+            #reward += self.steps * .5 # survival
+            if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
+                reward += 10000 # fortress kill
+            else:
+                if world["vlner"] > self.world["vlner"]:
+                    if world["vlner"] < 12:
+                        reward += world["vlner"]**2 # vlner increment
+                    else:
+                        reward -= 2 # failed kill
+                elif world["vlner"] == 0 and self.world["vlner"] != 0:
+                    reward -= self.world["vlner"] # reset
+        else:
+            if self.world["ship"]["alive"]:
+                if "big-hex" in world["collisions"]:
+                    reward -= 1000 # outer death
+                if "small-hex" in world["collisions"]:
+                    reward -= 1000 # inner death
+                if "shell" in world["collisions"]:
+                    reward -= 100 # shell death
         return reward
 
     def _reward_simple(self, world):
@@ -291,7 +287,7 @@ class AutoturnSF_Env(gym.Env):
             self.shell_deaths += 1
         if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
             self.fortress_kills += 1
-        if world["vlner"] == 0 and self.world["vlner"] > 0 and self.world["vlner"] < 11 and world["fortress"]["alive"]:
+        if world["vlner"] == 0 and self.world["vlner"] > 0:
             self.reset_vlners.append(self.world["vlner"])
         self.score = world["rawpnts"]
         if world["pnts"] > self.maxscore:
@@ -363,4 +359,4 @@ class AutoturnSF_Env(gym.Env):
                 break
         self.state.pop(0)
         self.state.append(self.__make_state(self.world, done))
-        return self.__reshape_state(), reward/100000., done, {}
+        return self.__reshape_state(), reward, done, {}
