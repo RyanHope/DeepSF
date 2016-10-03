@@ -136,7 +136,8 @@ class AutoturnSF_Env(gym.Env):
         2: SHOOT - thrust_up, shoot_down
         3: THRUSTSHOOT - thrust_down, thrust_shoot (disabled)
         """
-        self.action_space = spaces.Discrete(3)
+        #self.action_space = spaces.Discrete(3)
+        self.action_space = spaces.Box(-1, +1, (2,))
 
         self.num_features = 15
         high = np.array([np.inf]*self.num_features*self.historylen)
@@ -225,7 +226,7 @@ class AutoturnSF_Env(gym.Env):
                     if world["vlner"] < 12:
                         reward += world["vlner"]**2 # vlner increment
                     else:
-                        reward -= 2 # failed kill
+                        reward -= 5 # failed kill
                 elif world["vlner"] == 0 and self.world["vlner"] != 0:
                     reward -= self.world["vlner"] # reset
         else:
@@ -294,48 +295,69 @@ class AutoturnSF_Env(gym.Env):
             self.maxscore = world["pnts"]
 
     def _step(self, action):
+        print(action)
         done = False
         reward = 0
         for _ in xrange(self.repeat):
             self.steps += 1
             thrusting = self.thrusting
             shooting = self.shooting
-            if action == 0:
-                if self.thrusting > 0:
-                    self.__send_command("keyup", "thrust")
-                    thrusting = 0
-                thrusting -= 1
-                if self.shooting > 0:
-                    self.__send_command("keyup", "fire")
-                    shooting = 0
-                shooting -= 1
-            elif action == 1:
+            if action[0] > 0:
                 if self.thrusting < 0:
                     self.__send_command("keydown", "thrust")
                     thrusting = 0
                 thrusting += 1
-                if self.shooting > 0:
-                    self.__send_command("keyup", "fire")
-                    shooting = 0
-                shooting -= 1
-            elif action == 2:
+            else:
                 if self.thrusting > 0:
                     self.__send_command("keyup", "thrust")
                     thrusting = 0
                 thrusting -= 1
+            if action[1] > 0:
                 if self.shooting < 0:
                     self.__send_command("keydown", "fire")
                     shooting = 0
                 shooting += 1
-            elif action == 3:
-                if self.thrusting < 0:
-                    self.__send_command("keydown", "thrust")
-                    thrusting = 0
-                thrusting += 1
-                if self.shooting < 0:
-                    self.__send_command("keydown", "fire")
+            else:
+                if self.shooting > 0:
+                    self.__send_command("keyup", "fire")
                     shooting = 0
-                shooting += 1
+                shooting -= 1
+            # if action == 0:
+            #     if self.thrusting > 0:
+            #         self.__send_command("keyup", "thrust")
+            #         thrusting = 0
+            #     thrusting -= 1
+            #     if self.shooting > 0:
+            #         self.__send_command("keyup", "fire")
+            #         shooting = 0
+            #     shooting -= 1
+            # elif action == 1:
+            #     if self.thrusting < 0:
+            #         self.__send_command("keydown", "thrust")
+            #         thrusting = 0
+            #     thrusting += 1
+            #     if self.shooting > 0:
+            #         self.__send_command("keyup", "fire")
+            #         shooting = 0
+            #     shooting -= 1
+            # elif action == 2:
+            #     if self.thrusting > 0:
+            #         self.__send_command("keyup", "thrust")
+            #         thrusting = 0
+            #     thrusting -= 1
+            #     if self.shooting < 0:
+            #         self.__send_command("keydown", "fire")
+            #         shooting = 0
+            #     shooting += 1
+            # elif action == 3:
+            #     if self.thrusting < 0:
+            #         self.__send_command("keydown", "thrust")
+            #         thrusting = 0
+            #     thrusting += 1
+            #     if self.shooting < 0:
+            #         self.__send_command("keydown", "fire")
+            #         shooting = 0
+            #     shooting += 1
 
             if shooting < 0:
                 self.shot_interval += 1

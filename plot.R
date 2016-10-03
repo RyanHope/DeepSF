@@ -3,9 +3,7 @@ setwd("C:/Users/Ryan/Dropbox/cmu-sf/autoturn-data")
 
 require(data.table)
 require(ggplot2)
-require(grid)
-require(gridExtra)
-source("multiplot.R")
+require(cowplot)
 
 distance_reward <- function(x) {1-abs(max(min(x,180),40)-110)/70}
 
@@ -33,7 +31,7 @@ while (T) {
 
 
 while (T) {
-  d = rbindlist(lapply(list.files(path="../deepsf-data/", pattern="*.tsv", full.names=TRUE), function(x) {.d=fread(x,header=T);if ("mean_eps" %in% names(x)) .d[,mean_eps:=NULL]; .d}))
+  d = rbindlist(lapply(list.files(path="../deepsf-data2/", pattern="*.tsv", full.names=TRUE), function(x) {.d=fread(x,header=T);if ("mean_eps" %in% names(x)) .d[,mean_eps:=NULL]; .d}))
   .k = as.numeric(d[,ceiling(max(episode)/50)])
   q = d[,.SD,.SDcols=c("id","episode","mean_q","maxscore","mean_absolute_error","outer_deaths","loss",
                        "inner_deaths","episode_reward","shell_deaths","raw_pnts","resets","total",
