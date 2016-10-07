@@ -143,6 +143,7 @@ class AutoturnSF_Env(gym.Env):
         self.observation_space = spaces.Box(-high, high)
 
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.s.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
         self.s.connect(("localhost", 3000))
         self.sf = self.s.makefile()
         self.config = json.loads(self.sf.readline())
