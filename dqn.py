@@ -20,6 +20,9 @@ from keras.layers import Dense, Activation, Flatten
 from keras.optimizers import Adam
 from keras.layers.advanced_activations import ELU
 
+import sys,os
+sys.path.insert(0, os.path.expanduser("~/workspace/keras-rl"))
+
 from rl.agents.dqn import DQNAgent
 from rl.policy import BoltzmannQPolicy, EpsGreedyQPolicy, LinearAnnealedPolicy
 from rl.memory import SequentialMemory
