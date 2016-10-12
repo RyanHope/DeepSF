@@ -51,7 +51,7 @@ def main(args):
     logfile = os.path.join(base, "%s_log.tsv" % alias)
     weightsfile = os.path.join(base, "%s_weights.h5f" % alias)
 
-    env = AutoturnSF_Env(alias, 4, 2, visualize=args.visualize)
+    env = AutoturnSF_Env(alias, 4, visualize=args.visualize)
 
     nb_actions = env.action_space.n
 
@@ -86,7 +86,7 @@ def main(args):
 
     if args.mode == "train":
         log = TrainEpisodeFileLogger(env, dqn, logfile, weightsfile)
-        dqn.fit(env, nb_steps=STEPS_PER_EPISODE*4000, visualize=True, verbose=2, callbacks=[log])#, action_repetition=3)
+        dqn.fit(env, nb_steps=STEPS_PER_EPISODE*4000, visualize=True, verbose=2, callbacks=[log], action_repetition=args.frameskip)
     elif args.mode == "test":
         dqn.test(env, nb_episodes=20, visualize=True)
 
@@ -99,6 +99,7 @@ if __name__ == '__main__':
     parser.add_argument('-d','--data', default="data")
     parser.add_argument('-w','--weights', default=None)
     parser.add_argument('-v','--visualize', action='store_true')
+    parser.add_argument('-f','--frameskip', default=2, type=int)
     parser.add_argument('-i','--interval', default=4, type=int)
     parser.add_argument('-n','--neurons', default=64, type=int)
     parser.add_argument('-m','--memlength', default=200, type=int)

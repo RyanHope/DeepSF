@@ -115,7 +115,7 @@ class AutoturnSF_Env(gym.Env):
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen=8, repeat=1, visualize=False):
+    def __init__(self, sid, historylen=8, visualize=False):
         self.sid = sid
 
         self._seed()
@@ -124,7 +124,6 @@ class AutoturnSF_Env(gym.Env):
         self.sf = None
 
         self.historylen = historylen
-        self.repeat = repeat
         self.state = []
 
         self.visualize = visualize
@@ -297,67 +296,64 @@ class AutoturnSF_Env(gym.Env):
     def _step(self, action):
         done = False
         reward = 0
-        for _ in xrange(self.repeat):
-            self.steps += 1
-            thrusting = self.thrusting
-            shooting = self.shooting
-            if action == 0:
-                if self.thrusting > 0:
-                    self.__send_command("keyup", "thrust")
-                    thrusting = 0
-                thrusting -= 1
-                if self.shooting > 0:
-                    self.__send_command("keyup", "fire")
-                    shooting = 0
-                shooting -= 1
-            elif action == 1:
-                if self.thrusting < 0:
-                    self.__send_command("keydown", "thrust")
-                    thrusting = 0
-                thrusting += 1
-                if self.shooting > 0:
-                    self.__send_command("keyup", "fire")
-                    shooting = 0
-                shooting -= 1
-            elif action == 2:
-                if self.thrusting > 0:
-                    self.__send_command("keyup", "thrust")
-                    thrusting = 0
-                thrusting -= 1
-                if self.shooting < 0:
-                    self.__send_command("keydown", "fire")
-                    shooting = 0
-                shooting += 1
-            elif action == 3:
-                if self.thrusting < 0:
-                    self.__send_command("keydown", "thrust")
-                    thrusting = 0
-                thrusting += 1
-                if self.shooting < 0:
-                    self.__send_command("keydown", "fire")
-                    shooting = 0
-                shooting += 1
+        self.steps += 1
+        thrusting = self.thrusting
+        shooting = self.shooting
+        if action == 0:
+            if self.thrusting > 0:
+                self.__send_command("keyup", "thrust")
+                thrusting = 0
+            thrusting -= 1
+            if self.shooting > 0:
+                self.__send_command("keyup", "fire")
+                shooting = 0
+            shooting -= 1
+        elif action == 1:
+            if self.thrusting < 0:
+                self.__send_command("keydown", "thrust")
+                thrusting = 0
+            thrusting += 1
+            if self.shooting > 0:
+                self.__send_command("keyup", "fire")
+                shooting = 0
+            shooting -= 1
+        elif action == 2:
+            if self.thrusting > 0:
+                self.__send_command("keyup", "thrust")
+                thrusting = 0
+            thrusting -= 1
+            if self.shooting < 0:
+                self.__send_command("keydown", "fire")
+                shooting = 0
+            shooting += 1
+        elif action == 3:
+            if self.thrusting < 0:
+                self.__send_command("keydown", "thrust")
+                thrusting = 0
+            thrusting += 1
+            if self.shooting < 0:
+                self.__send_command("keydown", "fire")
+                shooting = 0
+            shooting += 1
 
-            if shooting < 0:
-                self.shot_interval += 1
-            elif self.shooting < 0:
-                if self.world["vlner"] < 11:
-                    self.shot_intervals[0].append(self.shot_interval)
-                else:
-                    self.shot_intervals[1].append(self.shot_interval)
-                self.shot_interval = 0
-
-            world = self.__send_command("continue", ret=True)
-            if "rawpnts" in world:
-                reward += self._reward_log(world)
-                self._update_stats(world)
+        if shooting < 0:
+            self.shot_interval += 1
+        elif self.shooting < 0:
+            if self.world["vlner"] < 11:
+                self.shot_intervals[0].append(self.shot_interval)
             else:
-                done = True
-            self.world = world
-            self.shooting = shooting
-            self.thrusting = thrusting
-            if done:
-                break
+                self.shot_intervals[1].append(self.shot_interval)
+            self.shot_interval = 0
+
+        world = self.__send_command("continue", ret=True)
+        if "rawpnts" in world:
+            reward = self._reward_log(world)
+            self._update_stats(world)
+        else:
+            done = True
+        self.world = world
+        self.shooting = shooting
+        self.thrusting = thrusting
         self.state.pop(0)
         self.state.append(self.__make_state(self.world, done))
         return self.__reshape_state(), reward, done, {}
