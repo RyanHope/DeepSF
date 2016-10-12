@@ -1,39 +1,17 @@
 #setwd("C:/Users/Ryan/Dropbox/cmu-sf")
-setwd("C:/Users/Ryan/Dropbox/cmu-sf/autoturn-data")
+setwd("~/Dropbox/cmu-sf/autoturn-data")
 
 require(data.table)
 require(ggplot2)
 require(grid)
 require(gridExtra)
+require(cowplot)
 source("multiplot.R")
 
 distance_reward <- function(x) {1-abs(max(min(x,180),40)-110)/70}
 
-while (T) {
-  d = fread("dqn-elu_log.tsv", header=T)
-  q = d[,.SD,.SDcols=c("episode","mean_q","maxscore","mean_absolute_error","outer_deaths","loss",
-                       "inner_deaths","episode_reward","shell_deaths","raw_pnts","resets","total",
-                       "fortress_kills","isi_pre","isi_post","reset_vlners")]
-  qm = melt(q,id.vars=c("episode"))
-  qm[,grp:=ifelse(variable=="isi_pre",2,ifelse(variable=="isi_post",3,1))]
-  qm[variable %in% c("isi_pre","isi_post"), variable:="isi"]
-  qm[variable=="isi" & value>25, value:=Inf]
-  qm[,grp:=factor(grp,levels=c(1,2,3),labels=c("vlner == *","vlner < 10","vlner >= 10"),ordered=T)]
-  p = ggplot(qm, aes(x=episode, y=value, group=grp, color=factor(grp))) + 
-    geom_line(size=.5, alpha=.5) +
-    facet_wrap(~variable, ncol=2, scales="free_y") +
-    geom_smooth(method = "gam", formula = y ~ s(x, k = 5), se=FALSE) +
-    ylab("Value") +
-    xlab("Episode") +
-    theme_bw() +
-    scale_color_manual(values=c("black","#998ec3","#f1a340"))
-  print(p)
-  Sys.sleep(60)
-}
-
-
-while (T) {
-  d = rbindlist(lapply(list.files(path="../deepsf-data/", pattern="*.tsv", full.names=TRUE), function(x) {.d=fread(x,header=T);if ("mean_eps" %in% names(x)) .d[,mean_eps:=NULL]; .d}))
+sfplots <- function(.folder) {
+  d = rbindlist(lapply(list.files(path=.folder, pattern="*.tsv", full.names=TRUE), function(x) {.d=fread(x,header=T);if ("mean_eps" %in% names(x)) .d[,mean_eps:=NULL]; .d}))
   .k = as.numeric(d[,ceiling(max(episode)/50)])
   q = d[,.SD,.SDcols=c("id","episode","mean_q","maxscore","mean_absolute_error","outer_deaths","loss",
                        "inner_deaths","episode_reward","shell_deaths","raw_pnts","resets","total",
@@ -135,7 +113,11 @@ while (T) {
   )
   p.1 <- plot_grid(p1, p2, p3, labels=c("A","B","C"), align="v", ncol=1, hjust=-.5)
   p.2 <- plot_grid(p8, p4, p5, p6, p7, p9, labels=c("D","E","F","G","H","I"), align="v", ncol=1, hjust=-.5)
-  print(p <- plot_grid(p.1, p.2, align="h"))
+  plot_grid(p.1, p.2, align="h")
+}
+
+while (T) {
+  print(p <- sfplots("../deepsf-data/"))
   png("dqn-current.png", width = 1400, height = 900)
   print(p)
   dev.off()
