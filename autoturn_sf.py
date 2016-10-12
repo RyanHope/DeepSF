@@ -115,7 +115,7 @@ class AutoturnSF_Env(gym.Env):
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen=8, visualize=False):
+    def __init__(self, sid, historylen=8, game_time=178200, visualize=False):
         self.sid = sid
 
         self._seed()
@@ -124,6 +124,7 @@ class AutoturnSF_Env(gym.Env):
         self.sf = None
 
         self.historylen = historylen
+        self.game_time = game_time
         self.state = []
 
         self.visualize = visualize
@@ -149,6 +150,10 @@ class AutoturnSF_Env(gym.Env):
         self.config = self.__send_command("id", self.sid, ret=True)
         if not self.visualize:
             self.__send_command("config", "display_level", 0, ret=True)
+        self.__send_command("config", "game_time", self.game_time, ret=True)
+
+    def get_max_frames(self):
+        return self.game_time / int(1./self.metadata["video.frames_per_second"]*1000)
 
     def __send_command(self, cmd, *args, **kwargs):
         out = {"command": cmd}

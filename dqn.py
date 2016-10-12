@@ -67,33 +67,17 @@ def main(args):
     model.add(Activation('linear'))
     print(model.summary())
 
-    STEPS_PER_EPISODE = 5455
+    STEPS_PER_EPISODE = env.get_max_frames() / args.frameskip
 
-    memory = SequentialMemory(limit=STEPS_PER_EPISODE*args.memlength)
-    if args.policy == "eps":
-        #policy = EpsGreedyQPolicy(eps=.001)
-        policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.9, value_min=.05, value_test=.05, nb_steps=STEPS_PER_EPISODE*20)
-    elif args.policy == "tau":
-        policy = BoltzmannQPolicy(tau=.85)
-        # policy = LinearAnnealedPolicy(BoltzmannQPolicy(), attr='tau', value_max=2, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
-    dqn = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, window_length=1, memory=memory,
-        nb_steps_warmup=0, gamma=.99, #delta_range=(-200000., 200000.),
-        target_model_update=2*STEPS_PER_EPISODE, train_interval=args.interval)
-    dqn.compile(Adam(lr=.00025), metrics=['mae'])
-
-    if args.weights != None and os.path.isfile(args.weights):
-        dqn.load_weights(args.weights)
-
-    if args.mode == "train":
-        log = TrainEpisodeFileLogger(env, dqn, logfile, weightsfile)
-        dqn.fit(env, nb_steps=STEPS_PER_EPISODE*4000, visualize=True, verbose=2, callbacks=[log], action_repetition=args.frameskip)
-    elif args.mode == "test":
-        dqn.test(env, nb_episodes=20, visualize=True)
+    memory = SequentialMemory(limit=1000000)
+    agent = DQNAgent(model=model, nb_actions=nb_actions, window_length=1, memory=memory,
+        nb_steps_warmup=0, gamma=.99, target_model_update=10000, train_interval=args.interval)
+    agent.compile(Adam(lr=.00025), metrics=['mae'])
+    agent.fit(env, nb_steps=STEPS_PER_EPISODE*10, visualize=True, verbose=2, action_repetition=args.frameskip)
 
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Autoturn SF DQN Model')
-    parser.add_argument('-M','--mode', nargs=1, choices=['train', 'test'], default=['train'])
     parser.add_argument('-p','--policy', nargs=1, choices=['eps', 'tau'], default=['eps'])
     parser.add_argument('-a','--activation', nargs=1, choices=['relu', 'elu'], default=['relu'])
     parser.add_argument('-d','--data', default="data")
@@ -104,7 +88,6 @@ if __name__ == '__main__':
     parser.add_argument('-n','--neurons', default=64, type=int)
     parser.add_argument('-m','--memlength', default=200, type=int)
     args = parser.parse_args()
-    args.mode = args.mode[0]
     args.policy = args.policy[0]
     args.activation = args.activation[0]
     main(args)
