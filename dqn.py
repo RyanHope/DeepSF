@@ -44,7 +44,7 @@ def main(args):
     if not os.path.isdir(base):
         raise Exception("Specified data directory is not a directory.")
 
-    alias = "dqn-%s-%s-%d-%d" % (args.activation, args.policy, args.interval, args.memlength)
+    alias = "dqn-%s-%s-%d-%d-%d" % (args.activation, args.policy, args.neurons, args.interval, args.memlength)
 
     logfile = None
     weightfile = None
@@ -57,11 +57,11 @@ def main(args):
 
     model = Sequential()
     model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
-    model.add(Dense(64))
+    model.add(Dense(args.neurons))
     model.add(get_activation(args.activation))
-    model.add(Dense(64))
+    model.add(Dense(args.neurons))
     model.add(get_activation(args.activation))
-    model.add(Dense(64))
+    model.add(Dense(args.neurons))
     model.add(get_activation(args.activation))
     model.add(Dense(nb_actions))
     model.add(Activation('linear'))
@@ -100,6 +100,7 @@ if __name__ == '__main__':
     parser.add_argument('-w','--weights', default=None)
     parser.add_argument('-v','--visualize', action='store_true')
     parser.add_argument('-i','--interval', default=4, type=int)
+    parser.add_argument('-n','--neurons', default=64, type=int)
     parser.add_argument('-m','--memlength', default=200, type=int)
     args = parser.parse_args()
     args.mode = args.mode[0]
