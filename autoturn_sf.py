@@ -115,7 +115,7 @@ class AutoturnSF_Env(gym.Env):
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen=8, game_time=178200, visualize=False):
+    def __init__(self, sid, historylen=8, game_time=178200, visualize=False, reward="pnts"):
         self.sid = sid
 
         self._seed()
@@ -128,6 +128,11 @@ class AutoturnSF_Env(gym.Env):
         self.state = []
 
         self.visualize = visualize
+
+        if reward=="rmh":
+            self._reward = self._reward_log
+        else:
+            self._reward = self._reward_pnts
 
         """
         Discrete actions:
@@ -208,6 +213,7 @@ class AutoturnSF_Env(gym.Env):
         self.thrusting = -1
         self.shooting = -1
         self.score = 0
+        self.score2 = 0
         self.maxscore = 0
         self.outer_deaths = 0
         self.inner_deaths = 0
@@ -243,43 +249,8 @@ class AutoturnSF_Env(gym.Env):
                     reward -= 100 # shell death
         return reward
 
-    def _reward_simple(self, world):
-        reward = 0
-        # ship death
-        if not world["ship"]["alive"] and self.world["ship"]["alive"]:
-            reward -= 1
-        # reset
-        if world["vlner"] == 0 and self.world["vlner"] > 0 and self.world["vlner"] < 11 and world["fortress"]["alive"]:
-            reward -= 1
-        # failed kill
-        if world["vlner"] > self.world["vlner"] and world["fortress"]["alive"] and world["vlner"] > 11:
-            reward -= 1
-        # vlner increment < 11
-        if "fortress" in world["collisions"] and not "fortress" in self.world["collisions"] and world["vlner"] < 12:
-            reward += 1
-        # kill
-        if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
-            reward += 1
-        return max(min(reward, 1), -1)
-
-    def _reward_simple2(self, world):
-        reward = 0.0
-        # ship death
-        if not world["ship"]["alive"] and self.world["ship"]["alive"]:
-            reward -= 1.0
-        # reset
-        if world["vlner"] == 0 and self.world["vlner"] > 0 and self.world["vlner"] < 11 and world["fortress"]["alive"]:
-            reward -= 0.1
-        # failed kill
-        if world["vlner"] > self.world["vlner"] and world["fortress"]["alive"] and world["vlner"] > 11:
-            reward -= 1.0
-        # vlner increment < 11
-        if "fortress" in world["collisions"] and not "fortress" in self.world["collisions"] and world["vlner"] < 12:
-            reward += 0.1
-        # kill
-        if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
-            reward += 10
-        return reward
+    def _reward_pnts(self, world):
+        return world["pnts"] - self.score2
 
     def _update_stats(self, world):
         if not world["ship"]["alive"]:
@@ -295,6 +266,7 @@ class AutoturnSF_Env(gym.Env):
         if world["vlner"] == 0 and self.world["vlner"] > 0:
             self.reset_vlners.append(self.world["vlner"])
         self.score = world["rawpnts"]
+        self.score2 = world["pnts"]
         if world["pnts"] > self.maxscore:
             self.maxscore = world["pnts"]
 
@@ -352,7 +324,7 @@ class AutoturnSF_Env(gym.Env):
 
         world = self.__send_command("continue", ret=True)
         if "rawpnts" in world:
-            reward = self._reward_log(world)
+            reward = self._reward(world)
             self._update_stats(world)
         else:
             done = True

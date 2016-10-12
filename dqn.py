@@ -44,14 +44,14 @@ def main(args):
     if not os.path.isdir(base):
         raise Exception("Specified data directory is not a directory.")
 
-    alias = "dqn-%s-%s-%d-%d-%d" % (args.activation, args.policy, args.neurons, args.interval, args.memlength)
+    alias = "dqn-%s-%s-%s-%d-%d-%d" % (args.reward, args.activation, args.policy, args.neurons, args.interval, args.memlength)
 
     logfile = None
     weightfile = None
     logfile = os.path.join(base, "%s_log.tsv" % alias)
     weightsfile = os.path.join(base, "%s_weights.h5f" % alias)
 
-    env = AutoturnSF_Env(alias, 4, visualize=args.visualize)
+    env = AutoturnSF_Env(alias, 4, visualize=args.visualize, reward=args.reward)
 
     nb_actions = env.action_space.n
 
@@ -69,17 +69,20 @@ def main(args):
 
     STEPS_PER_EPISODE = env.get_max_frames() / args.frameskip
 
-    memory = SequentialMemory(limit=1000000)
-    agent = DQNAgent(model=model, nb_actions=nb_actions, window_length=1, memory=memory,
-        nb_steps_warmup=0, gamma=.99, target_model_update=10000, train_interval=args.interval)
+    memory = SequentialMemory(limit=STEPS_PER_EPISODE*100)
+    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.1, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*10000)
+    agent = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, window_length=1, memory=memory,
+        train_interval=args.interval, nb_steps_warmup=STEPS_PER_EPISODE*1, gamma=.99, target_model_update=STEPS_PER_EPISODE*2)
     agent.compile(Adam(lr=.00025), metrics=['mae'])
-    agent.fit(env, nb_steps=STEPS_PER_EPISODE*10, visualize=True, verbose=2, action_repetition=args.frameskip)
+    log = TrainEpisodeFileLogger(env, agent, logfile, weightsfile)
+    agent.fit(env, nb_steps=STEPS_PER_EPISODE*100000, visualize=True, verbose=2, action_repetition=args.frameskip, callbacks=[log])
 
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='Autoturn SF DQN Model')
     parser.add_argument('-p','--policy', nargs=1, choices=['eps', 'tau'], default=['eps'])
     parser.add_argument('-a','--activation', nargs=1, choices=['relu', 'elu'], default=['relu'])
+    parser.add_argument('-r','--reward', nargs=1, choices=['pnts', 'rmh'], default=['pnts'])
     parser.add_argument('-d','--data', default="data")
     parser.add_argument('-w','--weights', default=None)
     parser.add_argument('-v','--visualize', action='store_true')
@@ -90,4 +93,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.policy = args.policy[0]
     args.activation = args.activation[0]
+    args.reward = args.reward[0]
     main(args)
