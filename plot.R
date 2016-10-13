@@ -12,7 +12,7 @@ distance_reward <- function(x) {1-abs(max(min(x,180),40)-110)/70}
 
 sfplots <- function(.folder) {
   d = rbindlist(lapply(list.files(path=.folder, pattern="*.tsv", full.names=TRUE), function(x) {.d=fread(x,header=T);if ("mean_eps" %in% names(x)) .d[,mean_eps:=NULL]; .d}))
-  .k = as.numeric(d[,ceiling(max(episode)/50)])
+  .k = as.numeric(d[,ceiling(max(episode)/25)])
   q = d[,.SD,.SDcols=c("id","episode","mean_q","maxscore","mean_absolute_error","outer_deaths","loss",
                        "inner_deaths","episode_reward","shell_deaths","raw_pnts","resets","total",
                        "fortress_kills","isi_pre","isi_post","reset_vlners")]
@@ -118,8 +118,8 @@ sfplots <- function(.folder) {
 
 while (T) {
   print(p <- sfplots("../deepsf-data/"))
-  png("dqn-current.png", width = 1400, height = 900)
-  print(p)
-  dev.off()
+  # png("dqn-current.png", width = 1400, height = 900)
+  # print(p)
+  # dev.off()
   Sys.sleep(120)
 }

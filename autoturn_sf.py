@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import sys
 import warnings
-import json
+import simplejson as json
 import socket
 import itertools
 import time
@@ -105,7 +105,7 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
         del self.actions[episode]
         del self.metrics[episode]
 
-        if episode % 10 == 0:
+        if episode % 100 == 0:
             self.dqn.save_weights(self.weightsfile, overwrite=True)
 
 class AutoturnSF_Env(gym.Env):
@@ -121,7 +121,6 @@ class AutoturnSF_Env(gym.Env):
         self._seed()
 
         self.s = None
-        self.sf = None
 
         self.historylen = historylen
         self.game_time = game_time
@@ -131,6 +130,8 @@ class AutoturnSF_Env(gym.Env):
 
         if reward=="rmh":
             self._reward = self._reward_log
+        elif reward=="rawpnts":
+            self._reward = self._reward_rawpnts
         else:
             self._reward = self._reward_pnts
 
@@ -147,15 +148,31 @@ class AutoturnSF_Env(gym.Env):
         high = np.array([np.inf]*self.num_features*self.historylen)
         self.observation_space = spaces.Box(-high, high)
 
+        self.buffer = None
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
         self.s.connect(("localhost", 3000))
-        self.sf = self.s.makefile()
-        self.config = json.loads(self.sf.readline())
+        self.config = json.loads(self.__read_response())
         self.config = self.__send_command("id", self.sid, ret=True)
         if not self.visualize:
             self.__send_command("config", "display_level", 0, ret=True)
         self.__send_command("config", "game_time", self.game_time, ret=True)
+
+    def __read_response(self):
+        buf = self.s.recv(4096)
+        buffering = True
+        while buffering:
+            if "\n" in buf:
+                (line, buf) = buf.split("\n", 1)
+                return line
+            else:
+                more = self.s.recv(4096)
+                if not more:
+                    buffering = False
+                else:
+                    buf += more
+        if buf:
+            return buf
 
     def get_max_frames(self):
         return self.game_time / int(1./self.metadata["video.frames_per_second"]*1000)
@@ -164,11 +181,10 @@ class AutoturnSF_Env(gym.Env):
         out = {"command": cmd}
         if len(args) > 0:
             out["args"] = args
-        out = "%s\r\n" % json.dumps(out)
-        self.sf.write(out.encode("utf-8"))
-        self.sf.flush()
+        out = "%s\n" % json.dumps(out)
+        self.s.send(out.encode("utf-8"))
         if "ret" in kwargs and kwargs["ret"]:
-            return json.loads(self.sf.readline())
+            return json.loads(self.__read_response())
 
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -251,6 +267,9 @@ class AutoturnSF_Env(gym.Env):
 
     def _reward_pnts(self, world):
         return world["pnts"] - self.score2
+
+    def _reward_rawpnts(self, world):
+        return world["rawpnts"] - self.score
 
     def _update_stats(self, world):
         if not world["ship"]["alive"]:
