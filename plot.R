@@ -21,6 +21,8 @@ sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresh
     theme_bw()
   if (!is.null(.ylab))
     p <- p + ylab(.ylab)
+  else
+    p <- p + theme(axis.title.y=element_blank())
   if (.grouped)
     p <- p + theme(plot.margin=leftpad) +
       scale_color_brewer(palette="Set1") +
@@ -29,8 +31,7 @@ sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresh
             legend.title=element_blank(),
             legend.text=element_text(size=7),
             legend.key.size=unit(.5,"line"),
-            legend.background = element_rect(fill=alpha('black', 0.1)),
-            legend.margin=unit(0,"cm"))
+            legend.background = element_rect(fill=alpha('black', 0.1)))
   p
 }
 
@@ -52,7 +53,7 @@ sfplots <- function(.folder) {
   p2 <- sfplot(qm, c("outer_deaths","inner_deaths","shell_deaths"), .ylab="Deaths", .grouped=TRUE, .k=.k)
   p3 <- sfplot(qm, c("finalscore","maxscore"), .ylab="Score", .grouped=TRUE, .k=.k)
   p6 <- sfplot(qm, c("mean_q","episode_reward","mean_absolute_error","loss"), .k=.k)
-  p7 <- sfplot(qm, c("resets","fortress_kills","raw_pnts","reset_vlners"), .k=.k)
+  p7 <- sfplot(qm, c("resets","fortress_kills","raw_pnts","reset_vlners"), .k=.k, .thresholds=data.table(variable="reset_vlners",threshold=10))
   p.1 <- plot_grid(p1, p2, p3, labels=c("A","B","C"), align="v", ncol=1, hjust=-.5)
   p.2 <- plot_grid(p6, p7, labels=c("D","E"), align="v", ncol=1, hjust=-.5)
   plot_grid(p.1, p.2, align="h")
