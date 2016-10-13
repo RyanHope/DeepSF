@@ -115,7 +115,7 @@ class AutoturnSF_Env(gym.Env):
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen=8, game_time=178200, visualize=False, reward="pnts"):
+    def __init__(self, sid, historylen=8, game_time=178200, visualize=False, reward="pnts", port=3000):
         self.sid = sid
 
         self._seed()
@@ -151,7 +151,7 @@ class AutoturnSF_Env(gym.Env):
         self.buffer = None
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
-        self.s.connect(("localhost", 3000))
+        self.s.connect(("localhost", port))
         self.config = json.loads(self.__read_response())
         self.config = self.__send_command("id", self.sid, ret=True)
         if not self.visualize:
@@ -272,18 +272,13 @@ class AutoturnSF_Env(gym.Env):
         return world["rawpnts"] - self.score
 
     def _update_stats(self, world):
-        if not world["ship"]["alive"]:
-            self.steps = 0
-        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "big-hex" in world["collisions"]:
-            self.outer_deaths += 1
-        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "small-hex" in world["collisions"]:
-            self.inner_deaths += 1
-        if not world["ship"]["alive"] and self.world["ship"]["alive"] and "shell" in world["collisions"]:
-            self.shell_deaths += 1
-        if not world["fortress"]["alive"] and self.world["fortress"]["alive"]:
-            self.fortress_kills += 1
-        if world["vlner"] == 0 and self.world["vlner"] > 0:
-            self.reset_vlners.append(self.world["vlner"])
+        if len(world["events"]) > 0:
+            if "ship-destroyed" in world["events"]: self.steps = 0
+            if "explode-bighex" in world["events"]: self.outer_deaths += 1
+            if "explode-smallhex" in world["events"]: self.inner_deaths += 1
+            if "shell-hit-ship" in world["events"]: self.shell_deaths += 1
+            if "fortress-destroyed" in world["events"]: self.fortress_kills += 1
+            if "vlner-reset" in world["events"]: self.reset_vlners.append(self.world["vlner"])
         self.score = world["rawpnts"]
         self.score2 = world["pnts"]
         if world["pnts"] > self.maxscore:
@@ -332,14 +327,14 @@ class AutoturnSF_Env(gym.Env):
                 shooting = 0
             shooting += 1
 
-        if shooting < 0:
-            self.shot_interval += 1
-        elif self.shooting < 0:
+        if shooting > 0 and self.shooting < 0:
             if self.world["vlner"] < 11:
                 self.shot_intervals[0].append(self.shot_interval)
             else:
                 self.shot_intervals[1].append(self.shot_interval)
             self.shot_interval = 0
+        else:
+            self.shot_interval += 1
 
         world = self.__send_command("continue", ret=True)
         if "rawpnts" in world:

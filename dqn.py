@@ -51,7 +51,7 @@ def main(args):
     logfile = os.path.join(base, "%s_log.tsv" % alias)
     weightsfile = os.path.join(base, "%s_weights.h5f" % alias)
 
-    env = AutoturnSF_Env(alias, 4, visualize=args.visualize, reward=args.reward)
+    env = AutoturnSF_Env(alias, 4, visualize=args.visualize, reward=args.reward, port=args.port)
 
     nb_actions = env.action_space.n
 
@@ -90,6 +90,7 @@ if __name__ == '__main__':
     parser.add_argument('-i','--interval', default=4, type=int)
     parser.add_argument('-n','--neurons', default=64, type=int)
     parser.add_argument('-m','--memlength', default=200, type=int)
+    parser.add_argument('-P','--port', default=3000, type=int)
     args = parser.parse_args()
     args.policy = args.policy[0]
     args.activation = args.activation[0]
