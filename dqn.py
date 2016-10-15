@@ -69,11 +69,15 @@ def main(args):
 
     STEPS_PER_EPISODE = env.get_max_frames() / args.frameskip
 
-    memory = SequentialMemory(limit=STEPS_PER_EPISODE*100)
-    policy = EpsGreedyQPolicy(eps=.1)
+    memory = SequentialMemory(limit=STEPS_PER_EPISODE*500)
+    #policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.5, value_min=.05, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
+    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.05, value_min=.001, value_test=.001, nb_steps=STEPS_PER_EPISODE*1000)
     agent = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, window_length=1, memory=memory,
         train_interval=args.interval, nb_steps_warmup=STEPS_PER_EPISODE*1, gamma=.99, target_model_update=STEPS_PER_EPISODE*1)
-    agent.compile(Adam(lr=.00025), metrics=['mae'])
+    agent.compile(Adam(lr=.0001), metrics=['mae'])
+    if args.weights != None and os.path.isfile(args.weights):
+        print("Loading weights from file: %s" % args.weights)
+        agent.load_weights(args.weights)
     log = TrainEpisodeFileLogger(env, agent, logfile, weightsfile)
     agent.fit(env, nb_steps=STEPS_PER_EPISODE*10000, visualize=True, verbose=2, action_repetition=args.frameskip, callbacks=[log])
 

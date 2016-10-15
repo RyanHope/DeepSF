@@ -47,7 +47,9 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
             'obs_min',
             'obs_max'
         ] + self.metrics_names + ['maxscore', 'outer_deaths', 'inner_deaths', 'shell_deaths', 'resets',
-                                  'reset_vlners', 'isi_pre', 'isi_post', 'fortress_kills', 'raw_pnts', 'total']
+                                  'reset_vlners', 'isi_pre', 'isi_post', 'fortress_kills', 'raw_pnts', 'total',
+                                  'action_noop', 'action_thrust', 'action_shoot',
+                                  'thrust_durations', 'shoot_durations', 'kill_vlners']
         self.file.write("%s\n" % "\t".join(header))
         self.file.flush()
         self.train_start = timeit.default_timer()
@@ -91,11 +93,13 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
             np.mean(self.observations[episode]),
             np.min(self.observations[episode]),
             np.max(self.observations[episode])
-        ] + metric_values + [self.env.maxscore, self.env.outer_deaths, self.env.inner_deaths, self.env.shell_deaths,
-                             len(self.env.reset_vlners), np.mean(self.env.reset_vlners) if len(self.env.reset_vlners)>0 else "NA",
-                             np.mean(self.env.shot_intervals[0]) if len(self.env.shot_intervals[0])>0 else "NA",
-                             np.mean(self.env.shot_intervals[1]) if len(self.env.shot_intervals[1])>0 else "NA",
-                             self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]]
+        ] + metric_values + [
+            self.env.maxscore, self.env.outer_deaths, self.env.inner_deaths, self.env.shell_deaths,
+            len(self.env.reset_vlners), np.mean(self.env.reset_vlners) if len(self.env.reset_vlners)>0 else "NA",
+            np.mean(self.env.shot_intervals[0]) if len(self.env.shot_intervals[0])>0 else "NA",
+            np.mean(self.env.shot_intervals[1]) if len(self.env.shot_intervals[1])>0 else "NA",
+            self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]
+        ] + self.env.actions_taken + [np.mean(self.env.thrust_durations), np.mean(self.env.shoot_durations), np.mean(self.env.kill_vlners)]
         self.file.write("%s\n" % "\t".join(map(str,map(lambda x: "NA" if x=="--" else x, variables))))
         self.file.flush()
 
@@ -237,8 +241,12 @@ class AutoturnSF_Env(gym.Env):
         self.fortress_kills = 0
         self.shot_intervals = [[],[]]
         self.shot_interval = 0
+        self.shoot_durations = []
+        self.thrust_durations = []
         self.steps = 0
         self.reset_vlners = []
+        self.kill_vlners = []
+        self.actions_taken = [0] * self.action_space.n
         self.world = {}
 
     def _reward_log(self, world):
@@ -273,12 +281,19 @@ class AutoturnSF_Env(gym.Env):
 
     def _update_stats(self, world):
         if len(world["events"]) > 0:
-            if "ship-destroyed" in world["events"]: self.steps = 0
-            if "explode-bighex" in world["events"]: self.outer_deaths += 1
-            if "explode-smallhex" in world["events"]: self.inner_deaths += 1
-            if "shell-hit-ship" in world["events"]: self.shell_deaths += 1
-            if "fortress-destroyed" in world["events"]: self.fortress_kills += 1
-            if "vlner-reset" in world["events"]: self.reset_vlners.append(self.world["vlner"])
+            if "ship-destroyed" in world["events"]:
+                self.steps = 0
+            if "explode-bighex" in world["events"]:
+                self.outer_deaths += 1
+            if "explode-smallhex" in world["events"]:
+                self.inner_deaths += 1
+            if "shell-hit-ship" in world["events"]:
+                self.shell_deaths += 1
+            if "fortress-destroyed" in world["events"]:
+                self.fortress_kills += 1
+                self.kill_vlners.append(self.world["vlner"])
+            if "vlner-reset" in world["events"]:
+                self.reset_vlners.append(self.world["vlner"])
         self.score = world["rawpnts"]
         self.score2 = world["pnts"]
         if world["pnts"] > self.maxscore:
@@ -293,10 +308,12 @@ class AutoturnSF_Env(gym.Env):
         if action == 0:
             if self.thrusting > 0:
                 self.__send_command("keyup", "thrust")
+                self.thrust_durations.append(self.thrusting)
                 thrusting = 0
             thrusting -= 1
             if self.shooting > 0:
                 self.__send_command("keyup", "fire")
+                self.shoot_durations.append(self.shooting)
                 shooting = 0
             shooting -= 1
         elif action == 1:
@@ -306,11 +323,13 @@ class AutoturnSF_Env(gym.Env):
             thrusting += 1
             if self.shooting > 0:
                 self.__send_command("keyup", "fire")
+                self.shoot_durations.append(self.shooting)
                 shooting = 0
             shooting -= 1
         elif action == 2:
             if self.thrusting > 0:
                 self.__send_command("keyup", "thrust")
+                self.thrust_durations.append(self.thrusting)
                 thrusting = 0
             thrusting -= 1
             if self.shooting < 0:
@@ -336,6 +355,7 @@ class AutoturnSF_Env(gym.Env):
         else:
             self.shot_interval += 1
 
+        self.actions_taken[action] += 1
         world = self.__send_command("continue", ret=True)
         if "rawpnts" in world:
             reward = self._reward(world)
@@ -343,6 +363,7 @@ class AutoturnSF_Env(gym.Env):
         else:
             done = True
         self.world = world
+
         self.shooting = shooting
         self.thrusting = thrusting
         self.state.pop(0)
