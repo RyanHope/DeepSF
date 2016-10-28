@@ -26,8 +26,9 @@ sys.path.insert(0, os.path.expanduser("~/workspace/keras-rl"))
 from rl.agents.dqn import DQNAgent
 from rl.policy import BoltzmannQPolicy, EpsGreedyQPolicy, LinearAnnealedPolicy
 from rl.memory import SequentialMemory
+from rl.callbacks import ModelIntervalCheckpoint
 
-from autoturn_sf import AutoturnSF_Env, TrainEpisodeFileLogger
+from autoturn_sf import AutoturnSF_Env, SFLogger
 
 def get_activation(activation):
     if activation == "relu":
@@ -44,11 +45,10 @@ def main(args):
     if not os.path.isdir(base):
         raise Exception("Specified data directory is not a directory.")
 
-    alias = "dqn-%s-%s-%s-%d-%d-%d" % (args.reward, args.activation, args.policy, args.neurons, args.interval, args.memlength)
+    alias = "dqn_%s_%s_%s_%d_%d_%d" % (args.reward, args.activation, args.policy, args.neurons, args.interval, args.memlength)
 
-    logfile = None
-    weightfile = None
-    logfile = os.path.join(base, "%s_log.tsv" % alias)
+    logfile_train = os.path.join(base, "%s_train_log.tsv" % alias)
+    logfile_test = os.path.join(base, "%s_test_log.tsv" % alias)
     weightsfile = os.path.join(base, "%s_weights.h5f" % alias)
 
     env = AutoturnSF_Env(alias, 4, visualize=args.visualize, reward=args.reward, port=args.port)
@@ -68,18 +68,29 @@ def main(args):
     print(model.summary())
 
     STEPS_PER_EPISODE = env.get_max_frames() / args.frameskip
+    inc = 5
 
-    memory = SequentialMemory(limit=STEPS_PER_EPISODE*500)
-    #policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.5, value_min=.05, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
-    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.05, value_min=.001, value_test=.001, nb_steps=STEPS_PER_EPISODE*1000)
-    agent = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, window_length=1, memory=memory,
+    log_train_cb = SFLogger(env, logfile_train)
+    log_test_cb = SFLogger(env, logfile_test)
+    save_model_cb = ModelIntervalCheckpoint(weightsfile, STEPS_PER_EPISODE*100)
+
+    memory = SequentialMemory(STEPS_PER_EPISODE*args.memlength, window_length=1)
+    policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.1, value_min=.01, value_test=.0, nb_steps=STEPS_PER_EPISODE*inc)
+    agent = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, memory=memory,
         train_interval=args.interval, nb_steps_warmup=STEPS_PER_EPISODE*1, gamma=.99, target_model_update=STEPS_PER_EPISODE*1)
     agent.compile(Adam(lr=.0001), metrics=['mae'])
     if args.weights != None and os.path.isfile(args.weights):
         print("Loading weights from file: %s" % args.weights)
         agent.load_weights(args.weights)
-    log = TrainEpisodeFileLogger(env, agent, logfile, weightsfile)
-    agent.fit(env, nb_steps=STEPS_PER_EPISODE*10000, visualize=True, verbose=2, action_repetition=args.frameskip, callbacks=[log])
+    games = args.games
+    while games > 0:
+        games -= inc
+        env.write_logs = 0
+        env.visualize = 0
+        agent.fit(env, nb_steps=STEPS_PER_EPISODE*inc, verbose=0, action_repetition=args.frameskip, callbacks=[save_model_cb, log_train_cb])
+        env.write_logs = 1
+        env.visualize = 1
+        agent.test(env, nb_episodes=2, callbacks=[])
 
 if __name__ == '__main__':
     import argparse
@@ -94,6 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('-i','--interval', default=4, type=int)
     parser.add_argument('-n','--neurons', default=64, type=int)
     parser.add_argument('-m','--memlength', default=200, type=int)
+    parser.add_argument('-G','--games', default=10000, type=int)
     parser.add_argument('-P','--port', default=3000, type=int)
     args = parser.parse_args()
     args.policy = args.policy[0]

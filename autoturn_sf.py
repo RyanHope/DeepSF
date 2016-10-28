@@ -15,15 +15,14 @@ from gym import spaces
 from gym.utils import seeding
 
 import keras
-from rl.callbacks import TrainEpisodeLogger
+from rl.callbacks import Callback, TrainEpisodeLogger
 
-class TrainEpisodeFileLogger(TrainEpisodeLogger):
-    def __init__(self, env, dqn, logfile, weightsfile):
-        super(TrainEpisodeFileLogger, self).__init__()
+class SFLogger(TrainEpisodeLogger):
+    def __init__(self, env, logfile):
+        super(SFLogger, self).__init__()
         self.env = env
-        self.dqn = dqn
         self.logfile = logfile
-        self.weightsfile = weightsfile
+        self.last_step = 0
 
     def on_train_begin(self, logs):
         self.metrics_names = self.model.metrics_names
@@ -33,23 +32,15 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
             'step',
             'nb_steps',
             'episode',
-            'duration',
-            'episode_steps',
-            'sps',
             'episode_reward',
-            'reward_mean',
-            'reward_min',
-            'reward_max',
-            'action_mean',
-            'action_min',
-            'action_max',
-            'obs_mean',
-            'obs_min',
-            'obs_max'
+            'reward_mean'
         ] + self.metrics_names + ['maxscore', 'outer_deaths', 'inner_deaths', 'shell_deaths', 'resets',
                                   'reset_vlners', 'isi_pre', 'isi_post', 'fortress_kills', 'raw_pnts', 'total',
-                                  'action_noop', 'action_thrust', 'action_shoot',
-                                  'thrust_durations', 'shoot_durations', 'kill_vlners']
+                                  'thrust_durations', 'shoot_durations', 'kill_vlners',
+                                  'action_noop', 'action_thrust', 'action_shoot']
+        if self.env.action_space.n == 4:
+            header.append("action_thrustshoot")
+
         self.file.write("%s\n" % "\t".join(header))
         self.file.flush()
         self.train_start = timeit.default_timer()
@@ -75,33 +66,33 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
                 metric_values.append(value)
 
         nb_step_digits = str(int(np.ceil(np.log10(self.params['nb_steps']))) + 1)
+        template = '{step: ' + nb_step_digits + 'd}/{nb_steps}: episode: {episode}, duration: {duration:.3f}s, episode steps: {episode_steps}, steps per second: {sps:.0f}, episode reward: {episode_reward:.3f}'
         variables = [
             self.env.sid,
             self.step,
             self.params['nb_steps'],
             episode + 1,
-            duration,
-            episode_steps,
-            float(episode_steps) / duration,
             np.sum(self.rewards[episode]),
-            np.mean(self.rewards[episode]),
-            np.min(self.rewards[episode]),
-            np.max(self.rewards[episode]),
-            np.mean(self.actions[episode]),
-            np.min(self.actions[episode]),
-            np.max(self.actions[episode]),
-            np.mean(self.observations[episode]),
-            np.min(self.observations[episode]),
-            np.max(self.observations[episode])
+            np.mean(self.rewards[episode])
         ] + metric_values + [
             self.env.maxscore, self.env.outer_deaths, self.env.inner_deaths, self.env.shell_deaths,
             len(self.env.reset_vlners), np.mean(self.env.reset_vlners) if len(self.env.reset_vlners)>0 else "NA",
             np.mean(self.env.shot_intervals[0]) if len(self.env.shot_intervals[0])>0 else "NA",
             np.mean(self.env.shot_intervals[1]) if len(self.env.shot_intervals[1])>0 else "NA",
             self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]
-        ] + self.env.actions_taken + [np.mean(self.env.thrust_durations), np.mean(self.env.shoot_durations), np.mean(self.env.kill_vlners)]
+        ] + [np.mean(self.env.thrust_durations), np.mean(self.env.shoot_durations), np.mean(self.env.kill_vlners)] + self.env.actions_taken
         self.file.write("%s\n" % "\t".join(map(str,map(lambda x: "NA" if x=="--" else x, variables))))
         self.file.flush()
+        dump = {
+            'step': self.step,
+            'nb_steps': self.last_step + self.params['nb_steps'],
+            'episode': episode + 1,
+            'duration': duration,
+            'episode_steps': episode_steps,
+            'sps': float(episode_steps) / duration,
+            'episode_reward': np.sum(self.rewards[episode])
+        }
+        print(template.format(**dump))
 
         del self.episode_start[episode]
         del self.observations[episode]
@@ -109,8 +100,6 @@ class TrainEpisodeFileLogger(TrainEpisodeLogger):
         del self.actions[episode]
         del self.metrics[episode]
 
-        if episode % 100 == 0:
-            self.dqn.save_weights(self.weightsfile, overwrite=True)
 
 class AutoturnSF_Env(gym.Env):
 
@@ -119,7 +108,7 @@ class AutoturnSF_Env(gym.Env):
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen=8, game_time=178200, visualize=False, reward="pnts", port=3000):
+    def __init__(self, sid, historylen=8, game_time=178200, visualize=1, write_logs=0, reward="pnts", port=3000):
         self.sid = sid
 
         self._seed()
@@ -128,6 +117,8 @@ class AutoturnSF_Env(gym.Env):
 
         self.historylen = historylen
         self.game_time = game_time
+        self.write_logs = write_logs
+        self.visualize = visualize
         self.state = []
 
         self.visualize = visualize
@@ -144,9 +135,9 @@ class AutoturnSF_Env(gym.Env):
         0: NOOP - thrust_up, shoot_up
         1: THRUST - thrust_down, shoot_up
         2: SHOOT - thrust_up, shoot_down
-        3: THRUSTSHOOT - thrust_down, thrust_shoot (disabled)
+        3: THRUSTSHOOT - thrust_down, thrust_shoot
         """
-        self.action_space = spaces.Discrete(3)
+        self.action_space = spaces.Discrete(4)
 
         self.num_features = 15
         high = np.array([np.inf]*self.num_features*self.historylen)
@@ -156,11 +147,6 @@ class AutoturnSF_Env(gym.Env):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.setsockopt(socket.SOL_TCP, socket.TCP_NODELAY, 1)
         self.s.connect(("localhost", port))
-        self.config = json.loads(self.__read_response())
-        self.config = self.__send_command("id", self.sid, ret=True)
-        if not self.visualize:
-            self.__send_command("config", "display_level", 0, ret=True)
-        self.__send_command("config", "game_time", self.game_time, ret=True)
 
     def __read_response(self):
         buf = self.s.recv(4096)
@@ -222,6 +208,11 @@ class AutoturnSF_Env(gym.Env):
 
     def _reset(self):
         self._destroy()
+        self.config = self.__send_command("continue", ret=True)
+        self.config = self.__send_command("id", self.sid, ret=True)
+        self.__send_command("config", "game_time", self.game_time, ret=True)
+        self.__send_command("config", "display_level", self.visualize, ret=True)
+        self.__send_command("config", "write_logs", self.write_logs, ret=True)
         self.world = self.__send_command("continue", ret=True)
         self.state = [self.__make_state(self.world, False)] * self.historylen
         return self.__reshape_state()
@@ -361,6 +352,7 @@ class AutoturnSF_Env(gym.Env):
             reward = self._reward(world)
             self._update_stats(world)
         else:
+            self.__send_command("continue", ret=False)
             done = True
         self.world = world
 
