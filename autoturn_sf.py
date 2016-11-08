@@ -108,7 +108,7 @@ class AutoturnSF_Env(gym.Env):
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen=8, game_time=178200, visualize=1, write_logs=0, reward="pnts", port=3000):
+    def __init__(self, sid, historylen=8, game_time=178200, visualize=1, write_logs=0, reward="pnts", port=3000, actions=3):
         self.sid = sid
 
         self._seed()
@@ -127,8 +127,10 @@ class AutoturnSF_Env(gym.Env):
             self._reward = self._reward_log
         elif reward=="rawpnts":
             self._reward = self._reward_rawpnts
-        else:
+        elif reward=="pnts":
             self._reward = self._reward_pnts
+        else:
+            self._reward = lambda x: 0
 
         """
         Discrete actions:
@@ -137,7 +139,7 @@ class AutoturnSF_Env(gym.Env):
         2: SHOOT - thrust_up, shoot_down
         3: THRUSTSHOOT - thrust_down, thrust_shoot
         """
-        self.action_space = spaces.Discrete(4)
+        self.action_space = spaces.Discrete(actions)
 
         self.num_features = 15
         high = np.array([np.inf]*self.num_features*self.historylen)
@@ -185,13 +187,13 @@ class AutoturnSF_Env(gym.Env):
         if not done:
             ret = list(map(float, [
                 world["ship"]["alive"],
-                world["ship"]["x"],
-                world["ship"]["y"],
-                world["ship"]["vx"],
-                world["ship"]["vy"],
-                world["ship"]["orientation"],
-                world["ship"]["vdir"],
-                world["ship"]["distance-from-fortress"],
+                np.around(world["ship"]["x"]),
+                np.around(world["ship"]["y"]),
+                np.around(world["ship"]["vx"],2),
+                np.around(world["ship"]["vy"],2),
+                np.around(world["ship"]["orientation"]),
+                np.around(world["ship"]["vdir"]),
+                np.around(world["ship"]["distance-from-fortress"]),
                 world["fortress"]["alive"],
                 len(world["missiles"]),
                 len(world["shells"]),
@@ -204,7 +206,6 @@ class AutoturnSF_Env(gym.Env):
 
     def __reshape_state(self):
         return list(itertools.chain.from_iterable(self.state))
-        return state
 
     def _reset(self):
         self._destroy()

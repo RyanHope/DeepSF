@@ -3,8 +3,11 @@ setwd("~/Dropbox/cmu-sf/autoturn-data")
 require(data.table)
 require(ggplot2)
 require(cowplot)
+require(compoisson)
 
-sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresholds=NULL) {
+subject5num <<- c(0,1480,1995,2335,2952)
+
+sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresholds=NULL, .fivenum=NULL) {
   leftpad <- unit(x=c(rel(1),rel(1),rel(1),rel(8)),units="mm")
   if (.grouped)
     p <- ggplot(d[variable %in% vars], aes(x=episode, y=value, color=factor(variable), group=variable)) + 
@@ -14,6 +17,14 @@ sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresh
       facet_grid(variable~id, scales="free")
   if (!is.null(.thresholds))
     p <- p + geom_hline((aes(yintercept=threshold)), data=.thresholds, color="magenta", alpha=.5)
+  if (!is.null(.fivenum))
+    p <- p + 
+      geom_hline((aes(yintercept=.fivenum[1])), color="magenta", alpha=.5, linetype="dotted") +
+      geom_hline((aes(yintercept=.fivenum[2])), color="magenta", alpha=.5, linetype="dashed") +
+      geom_hline((aes(yintercept=.fivenum[3])), color="magenta", alpha=.5) +
+      geom_hline((aes(yintercept=.fivenum[4])), color="magenta", alpha=.5, linetype="dashed") +
+      geom_hline((aes(yintercept=.fivenum[5])), color="magenta", alpha=.5, linetype="dotted")
+      
   if (!.SE)
     p <- p + geom_line(size=.5, alpha=.5)    
   p <- p + geom_smooth(se=.SE, method = "gam", formula = y ~ s(x, k = .k), size=.5) +
@@ -45,7 +56,7 @@ sfplots <- function(.folder) {
       .d[,c("action_noop_p","action_thrust_p","action_shoot_p","action_thrustshoot_p"):=.(action_noop/5400,action_thrust/5400,action_shoot/5400,action_thrustshoot/5400)]
     else
       .d[,c("action_noop_p","action_thrust_p","action_shoot_p"):=.(action_noop/5400,action_thrust/5400,action_shoot/5400)]
-    .d
+    .d[episode>10]
   }))
   .k <- as.numeric(d[,ceiling(max(episode)/25)])
   sdcols = c("id","episode","mean_q","maxscore","mean_absolute_error","outer_deaths","loss",
@@ -60,17 +71,73 @@ sfplots <- function(.folder) {
   
   p1 <- sfplot(qm, c("isi_pre","isi_post"), .ylab="Inter-shot interval", .grouped=TRUE, .k=.k, .thresholds=data.table(variable="isi_pre",threshold=7.5))
   p2 <- sfplot(qm, c("outer_deaths","inner_deaths","shell_deaths"), .ylab="Deaths", .grouped=TRUE, .k=.k)
-  p3 <- sfplot(qm, c("finalscore","maxscore"), .ylab="Score", .grouped=TRUE, .k=.k)
+  p3 <- sfplot(qm, c("finalscore","maxscore"), .ylab="Score", .grouped=TRUE, .k=.k, .fivenum=subject5num)
   p4 <- sfplot(qm, c("thrust_durations","shoot_durations"), .ylab="Mean Durations", .grouped=TRUE, .k=.k)
-  if ("action_thrustshoot" %in% names(d))
+  if ("action_thrustshoot" %in% names(d)) {
     p5 <- sfplot(qm, c("action_noop_p","action_thrust_p","action_shoot_p","action_thrustshoot_p"), .ylab="Action Proportion", .grouped=TRUE, .k=.k)
-  else
+  } else {
     p5 <- sfplot(qm, c("action_noop_p","action_thrust_p","action_shoot_p"), .ylab="Action Proportion", .grouped=TRUE, .k=.k)
+  }
   p6 <- sfplot(qm, c("mean_q","episode_reward","mean_absolute_error","loss"), .k=.k)
   p7 <- sfplot(qm, c("resets","fortress_kills","kill_vlners","reset_vlners"), .k=.k, .thresholds=data.table(variable=c("reset_vlners","kill_vlners"),threshold=c(10,10)))
   p.1 <- plot_grid(p1, p2, p3, p4, p5, labels=c("A","B","C","D","E"), align="v", ncol=1, hjust=-.5)
   p.2 <- plot_grid(p6, p7, labels=c("E","F"), align="v", ncol=1, hjust=-.5)
   plot_grid(p.1, p.2, align="h")
+}
+
+epsu <- function(n, eps) {
+  runs <- array(0, n)
+  for (i in 1:n) {
+    .eps <- eps
+    while (runif(1) > .eps) {
+      runs[i] <- runs[i] + 1
+      .eps <- .eps + .eps * (1+.eps)
+    }
+  }
+  runs
+}
+
+while (F) {
+  dp1 = rbindlist(list(
+    data.table(runs=rle(runif(10000)<=.1)$lengths, type="unif", param=".1"),
+    data.table(runs=rle(runif(10000)<=.001)$lengths, type="unif", param=".001"),
+    data.table(runs=rle(runif(10000)<=.000001)$lengths, type="unif", param=".000001")
+  ))
+  dp2 = data.table()
+  for (lam in c(10,20,30)) {
+    .dp2 = data.table(runs=rpois(1,lam), type="pois", param=as.character(lam))
+    while (.dp2[, sum(runs)]<10000)
+      .dp2 = rbind(.dp2, data.table(runs=rpois(1,lam), type="pois", param=as.character(lam)))
+    dp2 = rbind(dp2, .dp2)
+  }
+  dp3 = data.table()
+  for (eps in c(.1,.001,.000001)) {
+    .dp3 = data.table(runs=epsu(1,eps), type="eps", param=as.character(eps))
+    while (.dp3[, sum(runs)]<10000)
+      .dp3 = rbind(.dp3, data.table(runs=epsu(1,eps), type="eps", param=as.character(eps)))
+    dp3 = rbind(dp3, .dp3)
+  }
+  dp = rbind(dp1, dp2, dp3)
+  ggplot(dp) + 
+    geom_histogram(aes(x=runs,group=param,fill=param),position="dodge",binwidth=1) + 
+    facet_wrap(~type) +
+    theme_bw() + 
+    theme(legend.position=c(.95,.95),
+          legend.justification=c(1,1))
+  
+  
+  good_subjects = c("sfsa08","sfsa10","sfsa16","sfsa20","sfsa28","sfsa30","sfsa43","sfsa47")
+  bad_uids = c("mturk-b2_A37EV8RZ82WT8E")
+  d2 = readRDS("ALLDATA_cmuStudents+distanceNoevals+impactNoevals+mturk-b2.rds")
+  d2[,uid:=paste(group,sid,sep="_")]
+  
+}
+
+rpoisn <- function(n, k, s) {
+  lam = c()
+  while (length(lam)<n)
+    lam = c(lam, rpois(1, round(rnorm(1, k, s))))
+  lam
 }
 
 while (T) {
