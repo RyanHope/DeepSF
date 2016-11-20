@@ -16,16 +16,17 @@ from __future__ import print_function
 import os
 
 from keras.models import Sequential
-from keras.layers import Dense, Activation, Flatten
-from keras.optimizers import Adam
+from keras.layers import Dense, Activation, Flatten, Dropout
+from keras.optimizers import SGD, Adam, Adagrad, Adadelta, Nadam
 from keras.layers.advanced_activations import ELU
+from keras.layers.normalization import BatchNormalization
 
 import sys,os
 sys.path.insert(0, os.path.expanduser("~/workspace/keras-rl"))
 
 from rl.agents.dqn import DQNAgent
 from rl.policy import EpsGreedyQPolicy, LinearAnnealedPolicy
-from rl.policy import LambdaImpendingFailureQPolicy, AccumulatingImpendingFailureQPolicy
+#from rl.policy import LambdaImpendingFailureQPolicy, AccumulatingImpendingFailureQPolicy
 from rl.memory import SequentialMemory
 from rl.callbacks import ModelIntervalCheckpoint
 
@@ -38,6 +39,38 @@ def get_activation(activation):
         return ELU(alpha=1.0)
     return None
 
+def make_sf_dqn_model(args, env):
+    model = Sequential()
+
+    model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
+    model.add(Dense(args.neurons, init='uniform'))
+    if args.batchnorm:
+        model.add(BatchNormalization())
+    model.add(ELU(alpha=1.0))
+    if args.dropout > 0:
+        model.add(Dropout(args.dropout))
+
+    model.add(Dense(args.neurons, init='uniform'))
+    if args.batchnorm:
+        model.add(BatchNormalization())
+    model.add(ELU(alpha=1.0))
+    if args.dropout > 0:
+        model.add(Dropout(args.dropout))
+
+    model.add(Dense(args.neurons, init='uniform'))
+    if args.batchnorm:
+        model.add(BatchNormalization())
+    model.add(ELU(alpha=1.0))
+    if args.dropout > 0:
+        model.add(Dropout(args.dropout))
+
+    model.add(Dense(env.action_space.n, init='uniform'))
+    if args.batchnorm:
+        model.add(BatchNormalization())
+    model.add(Activation('linear'))
+
+    return model
+
 def main(args):
 
     base = os.path.expanduser(args.data)
@@ -46,7 +79,19 @@ def main(args):
     if not os.path.isdir(base):
         raise Exception("Specified data directory is not a directory.")
 
-    alias = "dqn_%s_%s_%s_%d_%d_%d_%d" % (args.reward, args.activation, args.policy, args.neurons, args.interval, args.memlength, args.statehistory)
+    aargs = [
+        "dqn",
+        args.reward,
+        args.activation,
+        args.policy,
+        "bn" if args.batchnorm else None,
+        "%d" % args.neurons,
+        "%d" % args.interval,
+        "%d" % args.memlength,
+        "%d" % args.statehistory,
+        "%.1f" % args.dropout,
+        "%.4f" % args.learningrate]
+    alias = "_".join([a for a in aargs if a!=None])
 
     logfile_train = os.path.join(base, "%s_train_log.tsv" % alias)
     logfile_test = os.path.join(base, "%s_test_log.tsv" % alias)
@@ -54,18 +99,7 @@ def main(args):
 
     env = AutoturnSF_Env(alias, args.statehistory, visualize=args.visualize, reward=args.reward, port=args.port)
 
-    nb_actions = env.action_space.n
-
-    model = Sequential()
-    model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
-    model.add(Dense(args.neurons))
-    model.add(get_activation(args.activation))
-    model.add(Dense(args.neurons))
-    model.add(get_activation(args.activation))
-    model.add(Dense(args.neurons))
-    model.add(get_activation(args.activation))
-    model.add(Dense(nb_actions))
-    model.add(Activation('linear'))
+    model = make_sf_dqn_model(args, env)
     print(model.summary())
 
     STEPS_PER_EPISODE = env.get_max_frames() / args.frameskip
@@ -76,14 +110,15 @@ def main(args):
 
     memory = SequentialMemory(STEPS_PER_EPISODE*args.memlength, window_length=1)
     if args.policy == "eps":
-        policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=1, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
-    elif args.policy == "lam":
-        policy = LinearAnnealedPolicy(LambdaImpendingFailureQPolicy(), attr='lam', value_max=1, value_min=30, value_test=30, nb_steps=STEPS_PER_EPISODE*1000)
-    elif args.policy == "alpha":
-        policy = LinearAnnealedPolicy(AccumulatingImpendingFailureQPolicy(), attr='alpha', value_max=.05, value_min=.00005, value_test=.00005, nb_steps=STEPS_PER_EPISODE*1000)
-    agent = DQNAgent(model=model, nb_actions=nb_actions, policy=policy, memory=memory,
+        policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.4, value_min=.05, value_test=.01, nb_steps=STEPS_PER_EPISODE*2000)
+    # elif args.policy == "lam":
+    #     policy = LinearAnnealedPolicy(LambdaImpendingFailureQPolicy(), attr='lam', value_max=1, value_min=30, value_test=30, nb_steps=STEPS_PER_EPISODE*1000)
+    # elif args.policy == "alpha":
+    #     policy = LinearAnnealedPolicy(AccumulatingImpendingFailureQPolicy(), attr='alpha', value_max=.05, value_min=.00005, value_test=.00005, nb_steps=STEPS_PER_EPISODE*1000)
+    agent = DQNAgent(model=model, nb_actions=env.action_space.n, policy=policy, memory=memory,
         train_interval=args.interval, nb_steps_warmup=STEPS_PER_EPISODE*1, gamma=.999, target_model_update=STEPS_PER_EPISODE*1)
-    agent.compile(Adam(lr=.0001), metrics=['mae'])
+    opt = Adadelta(lr=args.learningrate)
+    agent.compile(opt, metrics=['mse'])
     if args.weights != None and os.path.isfile(args.weights):
         print("Loading weights from file: %s" % args.weights)
         agent.load_weights(args.weights)
@@ -96,14 +131,17 @@ if __name__ == '__main__':
     parser.add_argument('-a','--activation', nargs=1, choices=['relu', 'elu'], default=['elu'])
     parser.add_argument('-r','--reward', nargs=1, choices=['pnts', 'rawpnts', 'rmh'], default=['pnts'])
     parser.add_argument('-d','--data', default="data")
+    parser.add_argument('-N','--batchnorm', action='store_true')
+    parser.add_argument('-D','--dropout', default=0, type=float)
     parser.add_argument('-w','--weights', default=None)
     parser.add_argument('-v','--visualize', action='store_true')
+    parser.add_argument('-l','--learningrate', default=1, type=float)
     parser.add_argument('-f','--frameskip', default=2, type=int)
     parser.add_argument('-i','--interval', default=4, type=int)
     parser.add_argument('-s','--statehistory', default=4, type=int)
     parser.add_argument('-n','--neurons', default=64, type=int)
     parser.add_argument('-m','--memlength', default=200, type=int)
-    parser.add_argument('-G','--games', default=10000, type=int)
+    parser.add_argument('-G','--games', default=100000, type=int)
     parser.add_argument('-P','--port', default=3000, type=int)
     args = parser.parse_args()
     args.policy = args.policy[0]

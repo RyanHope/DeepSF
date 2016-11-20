@@ -24,7 +24,7 @@ sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresh
       geom_hline((aes(yintercept=.fivenum[3])), color="magenta", alpha=.5) +
       geom_hline((aes(yintercept=.fivenum[4])), color="magenta", alpha=.5, linetype="dashed") +
       geom_hline((aes(yintercept=.fivenum[5])), color="magenta", alpha=.5, linetype="dotted")
-      
+  
   if (!.SE)
     p <- p + geom_line(size=.5, alpha=.5)    
   p <- p + geom_smooth(se=.SE, method = "gam", formula = y ~ s(x, k = .k), size=.5) +
@@ -36,13 +36,13 @@ sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresh
     p <- p + theme(axis.title.y=element_blank())
   if (.grouped)
     p <- p + theme(plot.margin=leftpad) +
-      scale_color_brewer(palette="Set1") +
-      theme(legend.position=c(.01,.99),
-            legend.justification=c(0,1),
-            legend.title=element_blank(),
-            legend.text=element_text(size=7),
-            legend.key.size=unit(.5,"line"),
-            legend.background = element_rect(fill=alpha('black', 0.1)))
+    scale_color_brewer(palette="Set1") +
+    theme(legend.position=c(.01,.99),
+          legend.justification=c(0,1),
+          legend.title=element_blank(),
+          legend.text=element_text(size=7),
+          legend.key.size=unit(.5,"line"),
+          legend.background = element_rect(fill=alpha('black', 0.1)))
   p
 }
 
@@ -56,11 +56,11 @@ sfplots <- function(.folder) {
       .d[,c("action_noop_p","action_thrust_p","action_shoot_p","action_thrustshoot_p"):=.(action_noop/5400,action_thrust/5400,action_shoot/5400,action_thrustshoot/5400)]
     else
       .d[,c("action_noop_p","action_thrust_p","action_shoot_p"):=.(action_noop/5400,action_thrust/5400,action_shoot/5400)]
-    .d[episode>10]
+    .d#[episode>10]
   }))
   .k <- as.numeric(d[,ceiling(max(episode)/25)])
-  sdcols = c("id","episode","mean_q","maxscore","mean_absolute_error","outer_deaths","loss",
-             "inner_deaths","episode_reward","shell_deaths","raw_pnts","resets","finalscore",
+  sdcols = c("id","episode","mean_q","maxscore","mean_squared_error","outer_deaths","loss",
+             "inner_deaths","episode_reward","shell_deaths","raw_pnts","resets","finalscore","max_vlner",
              "fortress_kills","isi_pre","isi_post","reset_vlners","reward_mean","thrust_durations","shoot_durations",
              "action_noop","action_thrust","action_shoot","action_noop_p","action_thrust_p","action_shoot_p","kill_vlners")
   if ("action_thrustshoot" %in% names(d))
@@ -78,11 +78,14 @@ sfplots <- function(.folder) {
   } else {
     p5 <- sfplot(qm, c("action_noop_p","action_thrust_p","action_shoot_p"), .ylab="Action Proportion", .grouped=TRUE, .k=.k)
   }
-  p6 <- sfplot(qm, c("mean_q","episode_reward","mean_absolute_error","loss"), .k=.k)
-  p7 <- sfplot(qm, c("resets","fortress_kills","kill_vlners","reset_vlners"), .k=.k, .thresholds=data.table(variable=c("reset_vlners","kill_vlners"),threshold=c(10,10)))
-  p.1 <- plot_grid(p1, p2, p3, p4, p5, labels=c("A","B","C","D","E"), align="v", ncol=1, hjust=-.5)
-  p.2 <- plot_grid(p6, p7, labels=c("E","F"), align="v", ncol=1, hjust=-.5)
-  plot_grid(p.1, p.2, align="h")
+  p6 <- sfplot(qm, c("max_vlner","kill_vlners"), .ylab="Fortress Vlner", .grouped=TRUE, .k=.k, .thresholds=data.table(variable="kill_vlners",threshold=10))
+  p7 <- sfplot(qm, c("mean_q","mean_squared_error","loss"), .k=.k)
+  p8 <- sfplot(qm, c("episode_reward","resets","fortress_kills"), .k=.k)
+  p.1 <- plot_grid(p1, p2, p3, labels=c("A","B","C"), align="v", ncol=1, hjust=-.5)
+  p.2 <- plot_grid(p4, p5, p6, labels=c("D","E","F"), align="v", ncol=1, hjust=-.5)
+  p.3 <- plot_grid(p.1, p.2, align="h", ncol=2, hjust=-.5)
+  p.4 <- plot_grid(p7, p8, labels=c("G","H"), align="h", ncol=2, hjust=-.5)
+  plot_grid(p.3, p.4, align="v", nrow=2, rel_heights=c(3, 1))
 }
 
 epsu <- function(n, eps) {
@@ -141,7 +144,7 @@ rpoisn <- function(n, k, s) {
 }
 
 while (T) {
-  .folder <- "../deepsf-data/"
+  .folder <- "../deepsf-data2/"
   print(p <- sfplots(.folder))
   Sys.sleep(120)
 }

@@ -6,7 +6,10 @@ from tables import *
 class SFStateActionInfo(IsDescription):
     sid = StringCol(64)
     game = UInt16Col()
+    frame = UInt16Col()
     action = UInt8Col()
+    final_score = UInt16Col()
+    max_score = UInt16Col()
     shipalive = UInt8Col()
     shipx = Float32Col()
     shipy = Float32Col()
@@ -32,8 +35,8 @@ if __name__ == '__main__':
         sapreader = csv.reader(sap, delimiter='\t')
         for row in sapreader:
             saps["sid"] = row[0]
-            saps["game"], saps["action"] = map(int, row[1:3])
-            state = map(float, row[3:])
+            saps["game"], saps["frame"], saps["action"], saps["final_score"], saps["max_score"] = map(int, row[1:6])
+            state = map(float, row[6:])
             saps["shipalive"] = state[0]
             saps["shipx"] = state[1]
             saps["shipy"] = state[2]

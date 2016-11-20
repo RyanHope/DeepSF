@@ -7,8 +7,10 @@ import sys,os
 sys.path.insert(0, os.path.expanduser("~/workspace/keras-rl"))
 
 from keras.models import Sequential
-from keras.layers import Dense
-from keras.optimizers import SGD, Adam
+from keras.layers import Dense, Activation, Dropout
+from keras.optimizers import SGD, Adam, Adagrad, Adadelta
+from keras.callbacks import ModelCheckpoint
+from keras.layers.normalization import BatchNormalization
 
 from autoturn_sf import AutoturnSF_Env, SFLogger
 
@@ -25,24 +27,42 @@ def main(args):
     nb_actions = env.action_space.n
 
     model = Sequential()
-    model.add(Dense(64, input_dim=15*args.statehistory, activation="relu"))
-    model.add(Dense(64, activation="relu"))
-    #model.add(Dense(32, activation="relu"))
-    #model.add(Dense(16, activation="relu"))
-    model.add(Dense(nb_actions, activation="sigmoid"))
+
+    model.add(Dense(64, input_dim=15*args.statehistory, init='uniform'))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    #model.add(Dropout(0.1))
+
+    model.add(Dense(64, init='uniform'))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    #model.add(Dropout(0.1))
+
+    model.add(Dense(64, init='uniform'))
+    model.add(BatchNormalization())
+    model.add(Activation('relu'))
+    #model.add(Dropout(0.1))
+
+    model.add(Dense(nb_actions, init='uniform'))
+    model.add(BatchNormalization())
+    model.add(Activation('softmax'))
+
     print(model.summary())
 
-    #opt = SGD(lr=0.00001)
-    opt = Adam(lr=.00001)
-    model.compile(loss="mean_absolute_error", optimizer=opt, metrics=['accuracy','mean_absolute_error'])
+    opt = Adadelta(lr=1, epsilon=.00001)
+    model.compile(loss="categorical_crossentropy", optimizer=opt, metrics=["precision","recall","fmeasure"])
 
     if args.mode == 'train':
+        if args.weights != None and os.path.isfile(args.weights):
+            model.load_weights(args.weights)
+
         train = []
         target = []
+
         h5file = open_file("all_state_action_pairs.h5", mode="r")
         table = h5file.root.saps
         for r in table.iterrows():
-            if r["game"] > 1 and r["sid"] == "sfsa28":
+            if r["game"] == 10 and r["frame"] > 15 and r["sid"] in ["sfsa43","sfsa30","sfsa20"]:
                 train.append([
                     r["shipalive"], r["shipx"], r["shipy"], r["shipvx"], r["shipvy"],
                     r["shipo"], r["vdir"], r["dist"], r["fortressalive"], r["missiles"],
@@ -60,20 +80,23 @@ def main(args):
         train = np.array(train)
         target = np.array(target)
 
-        epochs_remaining = args.epochs - 100
-        while epochs_remaining > 0:
-            model.fit(train, target, validation_split=.1, verbose=1, nb_epoch=100)
-            model.save_weights("deepExpert_weights.h5", overwrite=T)
-            epochs_remaining -= 100
-            
+        mcp = ModelCheckpoint("deepExpert_weights.h5", save_best_only=False,  save_weights_only=True)
+        model.fit(train, target, validation_split=.2, verbose=1, nb_epoch=args.epochs, batch_size=32, callbacks=[mcp])
+
     elif args.mode == 'test':
-        model.load_weights("deepExpert_weights.h5")
         while True:
-            observation = env.reset()
-            done = False
-            while not done:
-                action = model.predict_on_batch(np.array([observation]))[0]
-                observation, r, done, _ = env.step(np.argmax(action))
+            try:
+                model.load_weights("deepExpert_weights.h5")
+                observation = env.reset()
+                done = False
+                while not done:
+                    action = model.predict_on_batch(np.array([observation]))[0]
+                    print(action,np.argmax(action))
+                    observation, r, done, _ = env.step(np.argmax(action))
+            except KeyError:
+                pass
+            except IOError:
+                pass
 
 
 if __name__ == '__main__':
@@ -83,7 +106,8 @@ if __name__ == '__main__':
     parser.add_argument('-m','--mode', nargs=1, choices=['train', 'test'], default=['train'])
     parser.add_argument('-d','--data', default="data")
     parser.add_argument('-s','--statehistory', default=4, type=int)
-    parser.add_argument('-e','--epochs', default=1000, type=int)
+    parser.add_argument('-w','--weights', default=None)
+    parser.add_argument('-e','--epochs', default=1000000, type=int)
     parser.add_argument('-P','--port', default=3000, type=int)
     args = parser.parse_args()
     args.mode = args.mode[0]

@@ -35,9 +35,9 @@ class SFLogger(TrainEpisodeLogger):
             'episode_reward',
             'reward_mean'
         ] + self.metrics_names + ['maxscore', 'outer_deaths', 'inner_deaths', 'shell_deaths', 'resets',
-                                  'reset_vlners', 'isi_pre', 'isi_post', 'fortress_kills', 'raw_pnts', 'total',
-                                  'thrust_durations', 'shoot_durations', 'kill_vlners',
-                                  'action_noop', 'action_thrust', 'action_shoot']
+                                  'reset_vlners', 'max_vlner', 'isi_pre', 'isi_post', 'fortress_kills',
+                                  'raw_pnts', 'total', 'thrust_durations', 'shoot_durations',
+                                  'kill_vlners', 'action_noop', 'action_thrust', 'action_shoot']
         if self.env.action_space.n == 4:
             header.append("action_thrustshoot")
 
@@ -76,7 +76,7 @@ class SFLogger(TrainEpisodeLogger):
             np.mean(self.rewards[episode])
         ] + metric_values + [
             self.env.maxscore, self.env.outer_deaths, self.env.inner_deaths, self.env.shell_deaths,
-            len(self.env.reset_vlners), np.mean(self.env.reset_vlners) if len(self.env.reset_vlners)>0 else "NA",
+            len(self.env.reset_vlners), np.mean(self.env.reset_vlners) if len(self.env.reset_vlners)>0 else "NA", self.env.max_vlner,
             np.mean(self.env.shot_intervals[0]) if len(self.env.shot_intervals[0])>0 else "NA",
             np.mean(self.env.shot_intervals[1]) if len(self.env.shot_intervals[1])>0 else "NA",
             self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]
@@ -108,12 +108,14 @@ class AutoturnSF_Env(gym.Env):
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen=8, game_time=178200, visualize=1, write_logs=0, reward="pnts", port=3000, actions=3):
+    def __init__(self, sid, historylen=8, game_time=178200, visualize=1, write_logs=0, reward="pnts", port=3000, actions=3, flat=True):
         self.sid = sid
 
         self._seed()
 
         self.s = None
+
+        self.flat = flat
 
         self.historylen = historylen
         self.game_time = game_time
@@ -216,7 +218,11 @@ class AutoturnSF_Env(gym.Env):
         self.__send_command("config", "write_logs", self.write_logs, ret=True)
         self.world = self.__send_command("continue", ret=True)
         self.state = [self.__make_state(self.world, False)] * self.historylen
-        return self.__reshape_state()
+        if self.flat:
+            s = self.__reshape_state()
+        else:
+            s = np.array(self.state)
+        return s
 
     def _render(self, mode='human', close=False):
         return True
@@ -238,6 +244,7 @@ class AutoturnSF_Env(gym.Env):
         self.steps = 0
         self.reset_vlners = []
         self.kill_vlners = []
+        self.max_vlner = 0
         self.actions_taken = [0] * self.action_space.n
         self.world = {}
 
@@ -273,6 +280,8 @@ class AutoturnSF_Env(gym.Env):
 
     def _update_stats(self, world):
         if len(world["events"]) > 0:
+            if world["vlner"] > self.max_vlner:
+                self.max_vlner = world["vlner"]
             if "ship-destroyed" in world["events"]:
                 self.steps = 0
             if "explode-bighex" in world["events"]:
@@ -361,4 +370,8 @@ class AutoturnSF_Env(gym.Env):
         self.thrusting = thrusting
         self.state.pop(0)
         self.state.append(self.__make_state(self.world, done))
-        return self.__reshape_state(), reward, done, {}
+        if self.flat:
+            s = self.__reshape_state()
+        else:
+            s = np.array(self.state)
+        return s, reward, done, {}
