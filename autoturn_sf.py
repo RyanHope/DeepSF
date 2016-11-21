@@ -39,6 +39,10 @@ class SFLogger(TrainEpisodeLogger):
                                   'kill_vlners', 'action_noop', 'action_thrust', 'action_shoot']
         if self.env.action_space.n == 4:
             self.header.append("action_thrustshoot")
+        self.file = open(self.logfile, "w")
+        self.file.write("%s\n" % "\t".join(self.header))
+        self.file.flush()
+        self.file.close()
         self.train_start = timeit.default_timer()
 
     def on_train_end(self, logs):
@@ -78,8 +82,7 @@ class SFLogger(TrainEpisodeLogger):
             self.env.fortress_kills, self.env.world["raw-pnts"], self.env.world["total"]
         ] + [np.mean(self.env.thrust_durations), np.mean(self.env.shoot_durations), np.mean(self.env.kill_vlners)] + self.env.actions_taken
 
-        self.file = open(self.logfile, "w")
-        self.file.write("%s\n" % "\t".join(self.header))
+        self.file = open(self.logfile, "a")
         self.file.write("%s\n" % "\t".join(map(str,map(lambda x: "NA" if x=="--" else x, variables))))
         self.file.flush()
         self.file.close()
