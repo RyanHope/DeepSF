@@ -7,7 +7,7 @@ require(compoisson)
 
 subject5num <<- c(0,1480,1995,2335,2952)
 
-sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresholds=NULL, .fivenum=NULL) {
+sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresholds=NULL, .fivenum=NULL, .mean=NULL) {
   leftpad <- unit(x=c(rel(1),rel(1),rel(1),rel(8)),units="mm")
   if (.grouped)
     p <- ggplot(d[variable %in% vars], aes(x=episode, y=value, color=factor(variable), group=variable)) + 
@@ -25,6 +25,8 @@ sfplot <- function(d, vars, .ylab=NULL, .grouped=FALSE, .SE=FALSE, .k=5, .thresh
       geom_hline((aes(yintercept=.fivenum[4])), color="magenta", alpha=.5, linetype="dashed") +
       geom_hline((aes(yintercept=.fivenum[5])), color="magenta", alpha=.5, linetype="dotted")
   
+  if (!is.null(.mean))
+    p <- p + geom_line(aes(x=episode, y=value, group=variable), size=.5, color="gray", data=d[variable==.mean])
   if (!.SE)
     p <- p + geom_line(size=.5, alpha=.5)    
   p <- p + geom_smooth(se=.SE, method = "gam", formula = y ~ s(x, k = .k), size=.5) +
@@ -66,11 +68,12 @@ sfplots <- function(.folder) {
   if ("action_thrustshoot" %in% names(d))
     sdcols = c(sdcols, "action_thrustshoot", "action_thrustshoot_p")
   q <- d[,.SD,.SDcols=sdcols]
+  q[,total_deaths:=outer_deaths+inner_deaths+shell_deaths]
   qm <- melt(q,id.vars=c("episode","id"))
   qm[,episode:=as.integer(episode)]
   
   p1 <- sfplot(qm, c("isi_pre","isi_post"), .ylab="Inter-shot interval", .grouped=TRUE, .k=.k, .thresholds=data.table(variable="isi_pre",threshold=7.5))
-  p2 <- sfplot(qm, c("outer_deaths","inner_deaths","shell_deaths"), .ylab="Deaths", .grouped=TRUE, .k=.k)
+  p2 <- sfplot(qm, c("outer_deaths","inner_deaths","shell_deaths"), .ylab="Deaths", .grouped=TRUE, .k=.k, .mean="total_deaths")
   p3 <- sfplot(qm, c("finalscore","maxscore"), .ylab="Score", .grouped=TRUE, .k=.k, .fivenum=subject5num)
   p4 <- sfplot(qm, c("thrust_durations","shoot_durations"), .ylab="Mean Durations", .grouped=TRUE, .k=.k)
   if ("action_thrustshoot" %in% names(d)) {

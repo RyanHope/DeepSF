@@ -41,13 +41,19 @@ def get_activation(activation):
     return None
 
 def make_sf_dqn_model(args, env):
-    model = Sequential()
+    inshape = (1,) + env.observation_space.shape)
 
+    # Input layer
+    model = Sequential()
     if args.lstm:
-        model.add(Reshape((args.statehistory, 15), input_shape=(1,) + env.observation_space.shape))
+        model.add(Reshape((args.statehistory, 15), input_shape=inshape)
+    else:
+        model.add(Flatten(input_shape=inshape))
+
+    # Hidden layer 1
+    if args.lstm:
         model.add(LSTM(args.neurons))
     else:
-        model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
         model.add(Dense(args.neurons))
     if args.batchnorm:
         model.add(BatchNormalization())
@@ -55,6 +61,7 @@ def make_sf_dqn_model(args, env):
     if args.dropout > 0:
         model.add(Dropout(args.dropout))
 
+    # Hidden layer 2
     model.add(Dense(args.neurons/2))
     if args.batchnorm:
         model.add(BatchNormalization())
@@ -62,6 +69,7 @@ def make_sf_dqn_model(args, env):
     if args.dropout > 0:
         model.add(Dropout(args.dropout))
 
+    # Hidden layer 3
     model.add(Dense(args.neurons/4))
     if args.batchnorm:
         model.add(BatchNormalization())
@@ -69,6 +77,7 @@ def make_sf_dqn_model(args, env):
     if args.dropout > 0:
         model.add(Dropout(args.dropout))
 
+    # Output layer
     model.add(Dense(env.action_space.n))
     model.add(Activation('linear'))
 
@@ -121,7 +130,7 @@ def main(args):
     #     policy = LinearAnnealedPolicy(AccumulatingImpendingFailureQPolicy(), attr='alpha', value_max=.05, value_min=.00005, value_test=.00005, nb_steps=STEPS_PER_EPISODE*1000)
     agent = DQNAgent(model=model, nb_actions=env.action_space.n, policy=policy, memory=memory,
         train_interval=args.interval, nb_steps_warmup=STEPS_PER_EPISODE*1, gamma=.999, target_model_update=STEPS_PER_EPISODE*1)
-    opt = Nadam()#Adam(lr=args.learningrate)
+    opt = Nadam(lr=args.learningrate)
     agent.compile(opt, metrics=['mean_absolute_error'])
     if args.weights != None and os.path.isfile(args.weights):
         print("Loading weights from file: %s" % args.weights)
