@@ -60,9 +60,9 @@ def main(args):
     model = Sequential()
 
     model.add(Reshape((args.statehistory, 15), input_shape=(1,) + env.observation_space.shape))
-
     model.add(LSTM(64))
-
+    model.add(Activation('relu'))
+    
     model.add(Dense(32))
     model.add(Activation('relu'))
 

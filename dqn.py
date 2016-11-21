@@ -16,10 +16,11 @@ from __future__ import print_function
 import os
 
 from keras.models import Sequential
-from keras.layers import Dense, Activation, Flatten, Dropout
+from keras.layers import Dense, Activation, Flatten, Dropout, Reshape
 from keras.optimizers import SGD, Adam, Adagrad, Adadelta, Nadam
 from keras.layers.advanced_activations import ELU
 from keras.layers.normalization import BatchNormalization
+from keras.layers import LSTM
 
 import sys,os
 sys.path.insert(0, os.path.expanduser("~/workspace/keras-rl"))
@@ -42,29 +43,34 @@ def get_activation(activation):
 def make_sf_dqn_model(args, env):
     model = Sequential()
 
-    model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
-    model.add(Dense(args.neurons, init='uniform'))
+    if args.lstm:
+        model.add(Reshape((args.statehistory, 15), input_shape=(1,) + env.observation_space.shape))
+        model.add(LSTM(args.neurons))
+    else:
+        model.add(Flatten(input_shape=(1,) + env.observation_space.shape))
+        model.add(Dense(args.neurons))
     if args.batchnorm:
         model.add(BatchNormalization())
-    model.add(ELU(alpha=1.0))
+    model.add(get_activation(args.activation))
     if args.dropout > 0:
         model.add(Dropout(args.dropout))
 
-    model.add(Dense(args.neurons, init='uniform'))
+    if not args.lstm:
+        model.add(Dense(args.neurons/2))
+        if args.batchnorm:
+            model.add(BatchNormalization())
+        model.add(get_activation(args.activation))
+        if args.dropout > 0:
+            model.add(Dropout(args.dropout))
+
+    model.add(Dense(args.neurons/4))
     if args.batchnorm:
         model.add(BatchNormalization())
-    model.add(ELU(alpha=1.0))
+    model.add(get_activation(args.activation))
     if args.dropout > 0:
         model.add(Dropout(args.dropout))
 
-    model.add(Dense(args.neurons, init='uniform'))
-    if args.batchnorm:
-        model.add(BatchNormalization())
-    model.add(ELU(alpha=1.0))
-    if args.dropout > 0:
-        model.add(Dropout(args.dropout))
-
-    model.add(Dense(env.action_space.n, init='uniform'))
+    model.add(Dense(env.action_space.n))
     if args.batchnorm:
         model.add(BatchNormalization())
     model.add(Activation('linear'))
@@ -84,14 +90,15 @@ def main(args):
         args.reward,
         args.activation,
         args.policy,
+        "lstm" if args.lstm else None,
         "bn" if args.batchnorm else None,
-        "%d" % args.neurons,
-        "%d" % args.interval,
-        "%d" % args.memlength,
-        "%d" % args.statehistory,
-        "%.1f" % args.dropout,
-        "%.4f" % args.learningrate]
-    alias = "_".join([a for a in aargs if a!=None])
+        args.neurons,
+        args.interval,
+        args.memlength,
+        args.statehistory,
+        args.dropout,
+        args.learningrate]
+    alias = "_".join([str(a) for a in aargs if a!=None])
 
     logfile_train = os.path.join(base, "%s_train_log.tsv" % alias)
     logfile_test = os.path.join(base, "%s_test_log.tsv" % alias)
@@ -110,15 +117,15 @@ def main(args):
 
     memory = SequentialMemory(STEPS_PER_EPISODE*args.memlength, window_length=1)
     if args.policy == "eps":
-        policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.4, value_min=.05, value_test=.01, nb_steps=STEPS_PER_EPISODE*2000)
+        policy = LinearAnnealedPolicy(EpsGreedyQPolicy(), attr='eps', value_max=.4, value_min=.01, value_test=.01, nb_steps=STEPS_PER_EPISODE*1000)
     # elif args.policy == "lam":
     #     policy = LinearAnnealedPolicy(LambdaImpendingFailureQPolicy(), attr='lam', value_max=1, value_min=30, value_test=30, nb_steps=STEPS_PER_EPISODE*1000)
     # elif args.policy == "alpha":
     #     policy = LinearAnnealedPolicy(AccumulatingImpendingFailureQPolicy(), attr='alpha', value_max=.05, value_min=.00005, value_test=.00005, nb_steps=STEPS_PER_EPISODE*1000)
     agent = DQNAgent(model=model, nb_actions=env.action_space.n, policy=policy, memory=memory,
         train_interval=args.interval, nb_steps_warmup=STEPS_PER_EPISODE*1, gamma=.999, target_model_update=STEPS_PER_EPISODE*1)
-    opt = Adadelta(lr=args.learningrate)
-    agent.compile(opt, metrics=['mse'])
+    opt = Nadam()#Adam(lr=args.learningrate)
+    agent.compile(opt, metrics=['mean_absolute_error'])
     if args.weights != None and os.path.isfile(args.weights):
         print("Loading weights from file: %s" % args.weights)
         agent.load_weights(args.weights)
@@ -131,9 +138,10 @@ if __name__ == '__main__':
     parser.add_argument('-a','--activation', nargs=1, choices=['relu', 'elu'], default=['elu'])
     parser.add_argument('-r','--reward', nargs=1, choices=['pnts', 'rawpnts', 'rmh'], default=['pnts'])
     parser.add_argument('-d','--data', default="data")
-    parser.add_argument('-N','--batchnorm', action='store_true')
+    parser.add_argument('--batchnorm', action='store_true')
     parser.add_argument('-D','--dropout', default=0, type=float)
     parser.add_argument('-w','--weights', default=None)
+    parser.add_argument('--lstm', action='store_true')
     parser.add_argument('-v','--visualize', action='store_true')
     parser.add_argument('-l','--learningrate', default=1, type=float)
     parser.add_argument('-f','--frameskip', default=2, type=int)

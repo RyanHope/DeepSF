@@ -59,7 +59,7 @@ sfplots <- function(.folder) {
     .d#[episode>10]
   }))
   .k <- as.numeric(d[,ceiling(max(episode)/25)])
-  sdcols = c("id","episode","mean_q","maxscore","mean_squared_error","outer_deaths","loss",
+  sdcols = c("id","episode","mean_q","maxscore","mean_absolute_error","outer_deaths","loss",
              "inner_deaths","episode_reward","shell_deaths","raw_pnts","resets","finalscore","max_vlner",
              "fortress_kills","isi_pre","isi_post","reset_vlners","reward_mean","thrust_durations","shoot_durations",
              "action_noop","action_thrust","action_shoot","action_noop_p","action_thrust_p","action_shoot_p","kill_vlners")
@@ -79,7 +79,7 @@ sfplots <- function(.folder) {
     p5 <- sfplot(qm, c("action_noop_p","action_thrust_p","action_shoot_p"), .ylab="Action Proportion", .grouped=TRUE, .k=.k)
   }
   p6 <- sfplot(qm, c("max_vlner","kill_vlners"), .ylab="Fortress Vlner", .grouped=TRUE, .k=.k, .thresholds=data.table(variable="kill_vlners",threshold=10))
-  p7 <- sfplot(qm, c("mean_q","mean_squared_error","loss"), .k=.k)
+  p7 <- sfplot(qm, c("mean_q","mean_absolute_error","loss"), .k=.k)
   p8 <- sfplot(qm, c("episode_reward","resets","fortress_kills"), .k=.k)
   p.1 <- plot_grid(p1, p2, p3, labels=c("A","B","C"), align="v", ncol=1, hjust=-.5)
   p.2 <- plot_grid(p4, p5, p6, labels=c("D","E","F"), align="v", ncol=1, hjust=-.5)
@@ -144,7 +144,7 @@ rpoisn <- function(n, k, s) {
 }
 
 while (T) {
-  .folder <- "../deepsf-data2/"
+  .folder <- "../deepsf-data/"
   print(p <- sfplots(.folder))
   Sys.sleep(120)
 }
