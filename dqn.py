@@ -41,12 +41,12 @@ def get_activation(activation):
     return None
 
 def make_sf_dqn_model(args, env):
-    inshape = (1,) + env.observation_space.shape)
+    inshape = (1,) + env.observation_space.shape
 
     # Input layer
     model = Sequential()
     if args.lstm:
-        model.add(Reshape((args.statehistory, 15), input_shape=inshape)
+        model.add(Reshape((args.statehistory, 15), input_shape=inshape))
     else:
         model.add(Flatten(input_shape=inshape))
 
