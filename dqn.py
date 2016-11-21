@@ -55,13 +55,12 @@ def make_sf_dqn_model(args, env):
     if args.dropout > 0:
         model.add(Dropout(args.dropout))
 
-    if not args.lstm:
-        model.add(Dense(args.neurons/2))
-        if args.batchnorm:
-            model.add(BatchNormalization())
-        model.add(get_activation(args.activation))
-        if args.dropout > 0:
-            model.add(Dropout(args.dropout))
+    model.add(Dense(args.neurons/2))
+    if args.batchnorm:
+        model.add(BatchNormalization())
+    model.add(get_activation(args.activation))
+    if args.dropout > 0:
+        model.add(Dropout(args.dropout))
 
     model.add(Dense(args.neurons/4))
     if args.batchnorm:
@@ -71,8 +70,6 @@ def make_sf_dqn_model(args, env):
         model.add(Dropout(args.dropout))
 
     model.add(Dense(env.action_space.n))
-    if args.batchnorm:
-        model.add(BatchNormalization())
     model.add(Activation('linear'))
 
     return model
