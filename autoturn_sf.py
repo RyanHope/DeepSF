@@ -112,7 +112,7 @@ class AutoturnSF_Env(gym.Env):
         'video.frames_per_second' : 30
     }
 
-    def __init__(self, sid, historylen=8, game_time=178200, visualize=1, write_logs=0, reward="pnts", port=3000, actions=3, flat=True):
+    def __init__(self, sid, historylen=8, game_time=178200, visualize=1, write_logs=0, reward="pnts", port=3000, actions=3, flat=True, batched=False):
         self.sid = sid
 
         self._seed()

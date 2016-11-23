@@ -13,8 +13,6 @@ Ideas:
 
 from __future__ import print_function
 
-import os
-
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Flatten, Dropout, Reshape
 from keras.optimizers import SGD, Adam, Adagrad, Adadelta, Nadam
@@ -43,39 +41,37 @@ def get_activation(activation):
 def make_sf_dqn_model(args, env):
     inshape = (1,) + env.observation_space.shape
 
-    # Input layer
     model = Sequential()
+
     if args.lstm:
+        # Input layer
         model.add(Reshape((args.statehistory, 15), input_shape=inshape))
+        # LSTM layer
+        model.add(LSTM(args.neurons, stateful=False, unroll=True, return_sequences=False, consume_less="gpu"))
     else:
+        # Input layer
         model.add(Flatten(input_shape=inshape))
-
-    # Hidden layer 1
-    if args.lstm:
-        model.add(LSTM(args.neurons))
-    else:
+        # Hidden dense layer 1
         model.add(Dense(args.neurons))
-    if args.batchnorm:
-        model.add(BatchNormalization())
-    model.add(get_activation(args.activation))
-    if args.dropout > 0:
-        model.add(Dropout(args.dropout))
-
-    # Hidden layer 2
-    model.add(Dense(args.neurons/2))
-    if args.batchnorm:
-        model.add(BatchNormalization())
-    model.add(get_activation(args.activation))
-    if args.dropout > 0:
-        model.add(Dropout(args.dropout))
-
-    # Hidden layer 3
-    model.add(Dense(args.neurons/4))
-    if args.batchnorm:
-        model.add(BatchNormalization())
-    model.add(get_activation(args.activation))
-    if args.dropout > 0:
-        model.add(Dropout(args.dropout))
+        if args.batchnorm:
+            model.add(BatchNormalization())
+        model.add(get_activation(args.activation))
+        if args.dropout > 0:
+            model.add(Dropout(args.dropout))
+        # Hidden dense layer 2
+        model.add(Dense(args.neurons))
+        if args.batchnorm:
+            model.add(BatchNormalization())
+        model.add(get_activation(args.activation))
+        if args.dropout > 0:
+            model.add(Dropout(args.dropout))
+        # Hidden dense layer 3
+        model.add(Dense(args.neurons))
+        if args.batchnorm:
+            model.add(BatchNormalization())
+        model.add(get_activation(args.activation))
+        if args.dropout > 0:
+            model.add(Dropout(args.dropout))
 
     # Output layer
     model.add(Dense(env.action_space.n))
@@ -110,7 +106,7 @@ def main(args):
     logfile_test = os.path.join(base, "%s_test_log.tsv" % alias)
     weightsfile = os.path.join(base, "%s_weights.h5f" % alias)
 
-    env = AutoturnSF_Env(alias, args.statehistory, visualize=args.visualize, reward=args.reward, port=args.port)
+    env = AutoturnSF_Env(alias, args.statehistory, visualize=args.visualize, reward=args.reward, port=args.port, actions=args.actions)
 
     model = make_sf_dqn_model(args, env)
     print(model.summary())
@@ -129,8 +125,8 @@ def main(args):
     # elif args.policy == "alpha":
     #     policy = LinearAnnealedPolicy(AccumulatingImpendingFailureQPolicy(), attr='alpha', value_max=.05, value_min=.00005, value_test=.00005, nb_steps=STEPS_PER_EPISODE*1000)
     agent = DQNAgent(model=model, nb_actions=env.action_space.n, policy=policy, memory=memory,
-        train_interval=args.interval, nb_steps_warmup=STEPS_PER_EPISODE*1, gamma=.999, target_model_update=STEPS_PER_EPISODE*1)
-    opt = Nadam(lr=args.learningrate)
+        train_interval=args.interval, nb_steps_warmup=STEPS_PER_EPISODE*1, gamma=.99, target_model_update=STEPS_PER_EPISODE*1)
+    opt = Adam(lr=args.learningrate)
     agent.compile(opt, metrics=['mean_absolute_error'])
     if args.weights != None and os.path.isfile(args.weights):
         print("Loading weights from file: %s" % args.weights)
@@ -152,6 +148,7 @@ if __name__ == '__main__':
     parser.add_argument('-l','--learningrate', default=1, type=float)
     parser.add_argument('-f','--frameskip', default=2, type=int)
     parser.add_argument('-i','--interval', default=4, type=int)
+    parser.add_argument('-A','--actions', default=3, type=int)
     parser.add_argument('-s','--statehistory', default=4, type=int)
     parser.add_argument('-n','--neurons', default=64, type=int)
     parser.add_argument('-m','--memlength', default=200, type=int)
