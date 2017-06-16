@@ -188,6 +188,13 @@ class AutoturnSF_Env(gym.Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
+    #'travel-time-to-bighex (travel-time-to-hex vel x y vx vy :radius bighex)
+    def __time_to_hex(self, world, big):
+        if big:
+            radius = 0
+        else:
+            radius = 0
+
     def __make_state(self, world, done):
         ret = [0.0] * self.num_features
         if not done:
@@ -206,7 +213,9 @@ class AutoturnSF_Env(gym.Env):
                 world["vlner"],
                 world["pnts"],
                 self.thrusting,
-                self.shooting
+                self.shooting,
+                self.__time_to_hex(world, 0),
+                self.__time_to_hex(world, 1)
             ]))
         return ret
 
